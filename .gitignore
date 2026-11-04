@@ -8,4 +8,6 @@ dist/
 .DS_Store
 coverage/
 infra/jenkins/agent.env
+agent.jar
+secret-file
 *.tsbuildinfo

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS players (
   fullname text NOT NULL,
   password_hash text NOT NULL,
   avatar_url text,
+  character_id text NOT NULL DEFAULT 'casual-male',
   x real NOT NULL DEFAULT 0,
   z real NOT NULL DEFAULT 23,
   balance_seconds integer NOT NULL DEFAULT 3600 CHECK (balance_seconds >= 0),
@@ -13,6 +14,7 @@ CREATE TABLE IF NOT EXISTS players (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE players ADD COLUMN IF NOT EXISTS online_seconds integer NOT NULL DEFAULT 0;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS character_id text NOT NULL DEFAULT 'casual-male';
 CREATE UNIQUE INDEX IF NOT EXISTS players_username_unique ON players (lower(username));
 CREATE UNIQUE INDEX IF NOT EXISTS players_nickname_unique ON players (lower(nickname));
 CREATE TABLE IF NOT EXISTS player_sessions (

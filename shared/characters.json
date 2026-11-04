@@ -1,0 +1,12 @@
+[
+  {"id":"casual-male","name":"Casual nam"},
+  {"id":"casual-female","name":"Casual nữ"},
+  {"id":"worker-male","name":"Công nhân nam"},
+  {"id":"worker-female","name":"Công nhân nữ"},
+  {"id":"wizard","name":"Pháp sư"},
+  {"id":"witch","name":"Phù thủy"},
+  {"id":"viking-male","name":"Viking nam"},
+  {"id":"viking-female","name":"Viking nữ"},
+  {"id":"pirate-male","name":"Hải tặc nam"},
+  {"id":"pirate-female","name":"Hải tặc nữ"}
+]

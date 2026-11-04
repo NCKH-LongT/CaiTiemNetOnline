@@ -1,4 +1,4 @@
-import { Room, defineRoom, defineServer } from 'colyseus';
+import { Room, WebSocketTransport, defineRoom, defineServer } from 'colyseus';
 import pg from 'pg';
 import { createClient } from 'redis';
 import world from '../../../shared/world.json' with { type: 'json' };
@@ -30,7 +30,7 @@ export class CafeRoom extends Room {
     const playerId = await redis.getDel(`netverse:ticket:${options.ticket}`);
     if (!playerId) throw new Error('invalid_ticket');
     const result = await pool.query(
-      `SELECT p.id,p.nickname,p.fullname,p.avatar_url,p.x,p.z,p.balance_seconds,p.online_seconds,
+      `SELECT p.id,p.nickname,p.fullname,p.avatar_url,p.character_id,p.x,p.z,p.balance_seconds,p.online_seconds,
         (SELECT name FROM artist_levels WHERE min_uploads <=
           (SELECT count(*) FROM art_images WHERE player_id=p.id) AND min_likes <=
           (SELECT count(*) FROM art_votes v JOIN art_images a ON a.id=v.image_id WHERE a.player_id=p.id AND v.vote=1)
@@ -39,8 +39,6 @@ export class CafeRoom extends Room {
       [playerId],
     );
     if (!result.rowCount) throw new Error('invalid_session');
-    if ([...this.players.values()].some((player) => player.userId === result.rows[0].id))
-      throw new Error('already_online');
     return result.rows[0];
   }
 
@@ -61,6 +59,8 @@ export class CafeRoom extends Room {
       client?.send('time', { seconds: player.balanceSeconds });
       if (player.balanceSeconds <= 0) {
         if (redis) await redis.del(`netverse:seat:${player.seatedAt}`);
+        if (redis) await redis.del(`netverse:desktop:${player.seatedAt}`);
+        if (redis) await redis.del(`netverse:desktop-preview:${player.seatedAt}`);
         this.seats.delete(player.seatedAt);
         player.seatedAt = null;
         player.x = 0;
@@ -97,6 +97,11 @@ export class CafeRoom extends Room {
 
   onCreate() {
     this.clock.setInterval(() => {
+      if (redis)
+        for (const player of this.players.values())
+          if (player.userId)
+            redis.set(`netverse:online:${player.userId}`, JSON.stringify({ sessionId: player.id, seatedAt: player.seatedAt }), { EX: 20 })
+              .catch((error) => console.error('Presence:', error));
       for (const player of this.players.values())
         if (player.seatedAt) this.charge(player).catch((error) => console.error('Timer:', error));
       for (const player of this.players.values())
@@ -139,6 +144,7 @@ export class CafeRoom extends Room {
       const distance = Math.hypot(data.x - player.x, data.z - player.z);
       const elapsed = Math.min(1, (Date.now() - player.lastMove) / 1000);
       if (distance > 5.5 * elapsed + 0.45) return;
+      if (distance > 0.001) player.heading = Math.atan2(data.x - player.x, data.z - player.z);
       player.x = data.x;
       player.z = data.z;
       player.lastMove = Date.now();
@@ -150,8 +156,8 @@ export class CafeRoom extends Room {
           peer.sessionId !== client.sessionId &&
           Math.hypot(nearby.x - player.x, nearby.z - player.z) < 20
         ) {
-          peer.send('player-move', { id: player.id, x: player.x, z: player.z });
-          nearbyPlayers.push({ id: nearby.id, x: nearby.x, z: nearby.z });
+          peer.send('player-move', { id: player.id, x: player.x, z: player.z, heading: player.heading });
+          nearbyPlayers.push({ id: nearby.id, x: nearby.x, z: nearby.z, heading: nearby.heading });
         }
       }
       const cell = `${Math.floor(player.x / 4)}:${Math.floor(player.z / 4)}`;
@@ -199,6 +205,8 @@ export class CafeRoom extends Room {
       }
       client.send('seat', { stationId });
       client.send('time', { seconds: player.balanceSeconds });
+      if (redis && player.userId)
+        await redis.set(`netverse:online:${player.userId}`, JSON.stringify({ sessionId: player.id, seatedAt: stationId }), { EX: 20 });
       this.sendSnapshot();
     });
     this.onMessage('stand', async (client) => {
@@ -207,11 +215,17 @@ export class CafeRoom extends Room {
       await this.charge(player);
       if (!player.seatedAt) return;
       const anchor = seatAnchor(player.seatedAt);
+      const previousStation = player.seatedAt;
       if (redis) await redis.del(`netverse:seat:${player.seatedAt}`);
       player.x = anchor.x;
       player.z = anchor.z;
       this.seats.delete(player.seatedAt);
       player.seatedAt = null;
+      if (redis && player.userId) {
+        await redis.del(`netverse:desktop:${previousStation}`);
+        await redis.del(`netverse:desktop-preview:${previousStation}`);
+        await redis.set(`netverse:online:${player.userId}`, JSON.stringify({ sessionId: player.id, seatedAt: null }), { EX: 20 });
+      }
       client.send('seat', { stationId: null, x: player.x, z: player.z });
       this.sendSnapshot();
     });
@@ -238,6 +252,8 @@ export class CafeRoom extends Room {
         fromUserId: player.userId,
         to: target?.sessionId ?? null,
         toUserId: targetPlayer?.userId ?? null,
+        toName: targetPlayer?.name ?? null,
+        toAvatarUrl: targetPlayer?.avatarUrl ?? null,
         name: player.name,
         avatarUrl: player.avatarUrl,
         text,
@@ -249,11 +265,31 @@ export class CafeRoom extends Room {
         client.send('chat', message);
       } else this.broadcast('chat', message);
     });
+    this.onMessage('chat-heart', (client, data) => {
+      const player = this.players.get(client.sessionId);
+      if (!player || typeof data?.messageId !== 'string' || data.messageId.length > 100) return;
+      const reaction = { messageId: data.messageId, userId: player.userId || player.id, hearted: data.hearted === true };
+      if (data.to) {
+        const target = this.clients.find((peer) => peer.sessionId === data.to);
+        target?.send('chat-heart', reaction);
+        client.send('chat-heart', reaction);
+      } else this.broadcast('chat-heart', reaction);
+    });
+    this.onMessage('desktop-view', (client, data) => {
+      const player = this.players.get(client.sessionId);
+      if (!redis || !player?.seatedAt) return;
+      const tab = ['desktop', 'browser', 'album', 'top', 'drawing'].includes(data?.tab) ? data.tab : 'desktop';
+      redis.set(`netverse:desktop:${player.seatedAt}`, JSON.stringify({ tab, updatedAt: Date.now() }), { EX: 20 }).catch(() => {});
+      if (tab === 'drawing' && typeof data?.preview === 'string' &&
+        /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(data.preview) && data.preview.length < 170_000)
+        redis.set(`netverse:desktop-preview:${player.seatedAt}`, data.preview, { EX: 20 }).catch(() => {});
+      else if (tab !== 'drawing') redis.del(`netverse:desktop-preview:${player.seatedAt}`).catch(() => {});
+    });
     this.onMessage('profile-refresh', async (client) => {
       const player = this.players.get(client.sessionId);
       if (!pool || !player?.userId) return;
       const result = await pool.query(
-        `SELECT p.nickname,p.fullname,p.avatar_url,
+        `SELECT p.nickname,p.fullname,p.avatar_url,p.character_id,
           (SELECT name FROM artist_levels WHERE min_uploads <=
             (SELECT count(*) FROM art_images WHERE player_id=p.id) AND min_likes <=
             (SELECT count(*) FROM art_votes v JOIN art_images a ON a.id=v.image_id WHERE a.player_id=p.id AND v.vote=1)
@@ -265,12 +301,15 @@ export class CafeRoom extends Room {
       player.name = result.rows[0].nickname;
       player.fullname = result.rows[0].fullname;
       player.avatarUrl = result.rows[0].avatar_url;
+      player.characterId = result.rows[0].character_id;
       player.badge = result.rows[0].badge;
       this.sendSnapshot();
     });
   }
 
   onJoin(client, options, auth) {
+    const duplicate = this.clients.find((peer) => peer.sessionId !== client.sessionId && this.players.get(peer.sessionId)?.userId === auth?.id);
+    duplicate?.leave(4001, 'session_replaced');
     const name =
       auth?.nickname || (typeof options?.name === 'string' ? options.name.trim().slice(0, 24) : '');
     this.players.set(client.sessionId, {
@@ -279,15 +318,19 @@ export class CafeRoom extends Room {
       name: name || 'Khách',
       fullname: auth?.fullname ?? '',
       avatarUrl: auth?.avatar_url ?? null,
+      characterId: auth?.character_id ?? 'casual-male',
       x: auth?.balance_seconds <= 0 ? 0 : (auth?.x ?? world.spawn[0]),
       z: auth?.balance_seconds <= 0 ? 29 : (auth?.z ?? world.spawn[2]),
       seatedAt: null,
       balanceSeconds: auth?.balance_seconds ?? 3600,
       onlineSeconds: auth?.online_seconds ?? 0,
       badge: auth?.badge ?? null,
+      heading: Math.PI,
       lastOnlineAt: Date.now(),
       lastMove: Date.now(),
     });
+    if (redis && auth?.id)
+      redis.set(`netverse:online:${auth.id}`, JSON.stringify({ sessionId: client.sessionId, seatedAt: null }), { EX: 20 }).catch(() => {});
     this.broadcast('snapshot', this.snapshot(), { except: client });
   }
 
@@ -296,6 +339,13 @@ export class CafeRoom extends Room {
     if (player?.seatedAt) await this.charge(player);
     if (player) await this.trackOnline(player);
     if (player?.seatedAt && redis) await redis.del(`netverse:seat:${player.seatedAt}`);
+    if (player?.seatedAt && redis) await redis.del(`netverse:desktop:${player.seatedAt}`);
+    if (player?.seatedAt && redis) await redis.del(`netverse:desktop-preview:${player.seatedAt}`);
+    if (player?.userId && redis) {
+      const key = `netverse:online:${player.userId}`;
+      const current = await redis.get(key);
+      if (current && JSON.parse(current).sessionId === player.id) await redis.del(key);
+    }
     if (player?.seatedAt) this.seats.delete(player.seatedAt);
     this.players.delete(client.sessionId);
     this.sendSnapshot();
@@ -308,14 +358,16 @@ export class CafeRoom extends Room {
   snapshot() {
     return {
       players: [...this.players.values()].map(
-        ({ id, userId, name, fullname, avatarUrl, x, z, seatedAt, balanceSeconds, onlineSeconds, badge }) => ({
+        ({ id, userId, name, fullname, avatarUrl, characterId, x, z, heading, seatedAt, balanceSeconds, onlineSeconds, badge }) => ({
           id,
           userId,
           name,
           fullname,
           avatarUrl,
+          characterId,
           x,
           z,
+          heading,
           seatedAt,
           balanceSeconds,
           onlineSeconds,
@@ -328,6 +380,7 @@ export class CafeRoom extends Room {
 }
 
 const server = defineServer({
+  transport: new WebSocketTransport({ maxPayload: 200 * 1024 }),
   rooms: { cafe: defineRoom(CafeRoom) },
   express: (app) => {
     app.get('/ready', (_request, response) => response.json({ status: 'ok', service: 'game' }));

@@ -8,6 +8,8 @@ import PcDesktop from './PcDesktop';
 import CommunityMusic from './CommunityMusic';
 import { api, readImage, type ArtImage, type Player } from '@/lib/api';
 import { loadChatMessages, saveChatMessage, type LocalChatMessage } from '@/lib/local-chat';
+import { compressChatImage } from '@/lib/chat-image';
+import { characters } from '@/lib/characters';
 import { nearestStation, spawn, stations, type Point3 } from '@/lib/stations';
 
 type ChatMessage = LocalChatMessage;
@@ -31,6 +33,7 @@ export default function NetverseWorldApp() {
   const [seatedAt, setSeatedAt] = useState<number | null>(null);
   const [nearbyId, setNearbyId] = useState<number | null>(null);
   const [connection, setConnection] = useState<'connecting' | 'online' | 'offline'>('offline');
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [players, setPlayers] = useState<RemotePlayer[]>([]);
   const [seats, setSeats] = useState<Record<number, string>>({});
@@ -39,11 +42,13 @@ export default function NetverseWorldApp() {
   const [notice, setNotice] = useState('');
   const [mainTab, setMainTab] = useState<'world' | 'community' | 'rankings'>('world');
   const [chatTarget, setChatTarget] = useState<{
-    sessionId: string;
+    sessionId: string | null;
     userId: string;
     name: string;
+    avatarUrl?: string | null;
   } | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [readAt, setReadAt] = useState<Record<string, number>>({});
   const [draft, setDraft] = useState('');
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<Leaderboard>({ rich: [], donors: [], art: [] });
@@ -56,13 +61,19 @@ export default function NetverseWorldApp() {
   const [profileName, setProfileName] = useState('');
   const [profileNick, setProfileNick] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [profileCharacter, setProfileCharacter] = useState(characters[0].id);
   const [giftNick, setGiftNick] = useState('');
   const [giftMinutes, setGiftMinutes] = useState(10);
   const [kneeling, setKneeling] = useState(false);
   const position = useRef<Point3>([...spawn]);
   const keys = useRef(new Set<string>());
   const room = useRef<Room | null>(null);
+  const activeChat = useRef<{ tab: string; userId: string | null }>({ tab: 'world', userId: null });
   const playerId = player?.id;
+
+  useEffect(() => {
+    activeChat.current = { tab: mainTab, userId: chatTarget?.userId || null };
+  }, [mainTab, chatTarget]);
 
   useEffect(() => {
     api<{ player: Player | null }>('/api/auth/me')
@@ -71,7 +82,11 @@ export default function NetverseWorldApp() {
           setPlayer(found);
           setSeconds(found.balance_seconds);
           setOnlineSeconds(found.online_seconds);
-          position.current = [found.x, 0, found.z];
+          try { setReadAt(JSON.parse(localStorage.getItem(`netverse-chat-read:${found.id}`) || '{}')); }
+          catch { setReadAt({}); }
+          position.current = found.balance_seconds > 0 ? [found.x, 0, found.z] : [0, 0, 29];
+          setSceneStart([...position.current]);
+          setEntered(true);
           loadChatMessages(found.id)
             .then(setMessages)
             .catch(() => setMessages([]));
@@ -84,6 +99,15 @@ export default function NetverseWorldApp() {
     (message: ChatMessage) => {
       if (playerId) saveChatMessage(playerId, message).catch(() => {});
       setMessages((previous) => [...previous, message].slice(-100));
+      if (message.to && message.fromUserId !== playerId &&
+        (activeChat.current.tab !== 'community' || activeChat.current.userId !== message.fromUserId))
+        setNotice(`Tin nhắn riêng mới từ ${message.name}`);
+      if (playerId && message.to && message.fromUserId && activeChat.current.tab === 'community' && activeChat.current.userId === message.fromUserId)
+        setReadAt((current) => {
+          const next = { ...current, [message.fromUserId!]: Math.max(current[message.fromUserId!] || 0, message.time) };
+          localStorage.setItem(`netverse-chat-read:${playerId}`, JSON.stringify(next));
+          return next;
+        });
     },
     [playerId],
   );
@@ -129,6 +153,7 @@ export default function NetverseWorldApp() {
     if (!entered || !playerId) return;
     let cancelled = false;
     let joined: Room | null = null;
+    let retry: ReturnType<typeof setTimeout> | null = null;
     (async () => {
       const { ticket } = await api<{ ticket: string }>('/api/auth/ticket');
       const endpoint =
@@ -147,14 +172,14 @@ export default function NetverseWorldApp() {
         setPlayers(snapshot.players);
         setSeats(snapshot.seats);
       });
-      joined.onMessage('player-move', ({ id, x, z }: { id: string; x: number; z: number }) =>
-        setPlayers((current) => current.map((item) => (item.id === id ? { ...item, x, z } : item))),
+      joined.onMessage('player-move', ({ id, x, z, heading }: { id: string; x: number; z: number; heading: number }) =>
+        setPlayers((current) => current.map((item) => (item.id === id ? { ...item, x, z, heading } : item))),
       );
-      joined.onMessage('nearby-players', (nearby: { id: string; x: number; z: number }[]) =>
+      joined.onMessage('nearby-players', (nearby: { id: string; x: number; z: number; heading: number }[]) =>
         setPlayers((current) =>
           current.map((item) => {
             const fresh = nearby.find((peer) => peer.id === item.id);
-            return fresh ? { ...item, x: fresh.x, z: fresh.z } : item;
+            return fresh ? { ...item, x: fresh.x, z: fresh.z, heading: fresh.heading } : item;
           }),
         ),
       );
@@ -185,26 +210,45 @@ export default function NetverseWorldApp() {
       });
       joined.onMessage('notice', ({ text }: { text: string }) => setNotice(text));
       joined.onMessage('chat', (message: ChatMessage) => appendMessage(message));
+      joined.onMessage('chat-heart', ({ messageId, userId, hearted }: { messageId: string; userId: string; hearted: boolean }) => {
+        setMessages((current) => current.map((message) => {
+          if (message.id !== messageId) return message;
+          const next = { ...message, heartedBy: hearted
+            ? [...new Set([...(message.heartedBy || []), userId])]
+            : (message.heartedBy || []).filter((id) => id !== userId) };
+          if (playerId) saveChatMessage(playerId, next).catch(() => {});
+          return next;
+        }));
+      });
       joined.send('sync');
-      joined.onLeave(() => {
+      joined.onLeave((code) => {
+        if (cancelled) return;
         room.current = null;
         setConnection('offline');
         setSessionId(null);
         setSeatedAt(null);
         setSeats({});
+        setPlayers([]);
+        if (code === 4001) {
+          setNotice('Tài khoản đã mở quán ở tab khác. Làm mới trang này để tiếp tục tại đây.');
+          return;
+        }
+        retry = setTimeout(() => setConnectionAttempt((current) => current + 1), 2000);
       });
     })().catch((error) => {
       if (!cancelled) {
         setConnection('offline');
         setNotice(`Không kết nối được game server: ${(error as Error).message}`);
+        retry = setTimeout(() => setConnectionAttempt((current) => current + 1), 3000);
       }
     });
     return () => {
       cancelled = true;
+      if (retry) clearTimeout(retry);
       joined?.leave();
       room.current = null;
     };
-  }, [entered, playerId, appendMessage]);
+  }, [entered, playerId, appendMessage, connectionAttempt]);
 
   const sit = useCallback(
     (stationId: number) => {
@@ -227,6 +271,9 @@ export default function NetverseWorldApp() {
   );
   const stand = useCallback(() => {
     room.current?.send('stand');
+  }, []);
+  const reportDesktopView = useCallback((tab: 'desktop' | 'browser' | 'album' | 'top' | 'drawing', preview?: string) => {
+    room.current?.send('desktop-view', { tab, preview });
   }, []);
   useEffect(() => {
     if (!entered) return;
@@ -272,6 +319,8 @@ export default function NetverseWorldApp() {
       setPlayer(result.player);
       setSeconds(result.player.balance_seconds);
       setOnlineSeconds(result.player.online_seconds);
+      try { setReadAt(JSON.parse(localStorage.getItem(`netverse-chat-read:${result.player.id}`) || '{}')); }
+      catch { setReadAt({}); }
       position.current = [result.player.x, 0, result.player.z];
       loadChatMessages(result.player.id)
         .then(setMessages)
@@ -307,6 +356,7 @@ export default function NetverseWorldApp() {
         fullname: profileName,
         nickname: profileNick,
         image: profileImage,
+        characterId: profileCharacter,
       });
       setPlayer(result.player);
       room.current?.send('profile-refresh');
@@ -332,8 +382,13 @@ export default function NetverseWorldApp() {
   const sendChat = (event: React.FormEvent) => {
     event.preventDefault();
     if ((!draft.trim() && !pendingImage) || !room.current) return;
+    const liveTarget = chatTarget && players.find((item) => item.userId === chatTarget.userId && item.id !== sessionId);
+    if (chatTarget && !liveTarget) {
+      setNotice('Người nhận đang offline. Tin nhắn riêng chỉ gửi khi cả hai online.');
+      return;
+    }
     room.current.send('chat', {
-      to: chatTarget?.sessionId ?? null,
+      to: liveTarget?.id ?? null,
       text: draft.trim().slice(0, 240),
       image: pendingImage,
     });
@@ -342,12 +397,56 @@ export default function NetverseWorldApp() {
   };
   const sendImage = async (file: File) => {
     try {
-      const data = await readImage(file);
-      if (data.length > 180000) throw new Error('Ảnh chat cần nhỏ hơn 130 KB.');
+      const data = await compressChatImage(file);
       setPendingImage(data);
     } catch (error) {
       setNotice((error as Error).message);
     }
+  };
+  const reactHeart = (message: ChatMessage) => {
+    if (!playerId || !room.current) return;
+    const hearted = !(message.heartedBy || []).includes(playerId);
+    const peerId = message.fromUserId === playerId ? message.toUserId : message.fromUserId;
+    const target = peerId ? players.find((item) => item.userId === peerId) : undefined;
+    if (message.to && !target) {
+      setNotice('Người kia đang offline; hãy thả tim khi họ online.');
+      return;
+    }
+    room.current.send('chat-heart', { messageId: message.id, hearted, to: message.to ? target?.id : null });
+  };
+  const conversations = new Map<string, { userId: string; name: string; avatarUrl: string | null; sessionId: string | null; lastTime: number; preview: string }>();
+  for (const item of players) {
+    if (item.id === sessionId || !item.userId) continue;
+    conversations.set(item.userId, { userId: item.userId, name: item.name, avatarUrl: item.avatarUrl || null, sessionId: item.id, lastTime: 0, preview: 'Đang online' });
+  }
+  for (const message of messages) {
+    if (!message.to) continue;
+    const peerId = message.fromUserId === playerId ? message.toUserId : message.fromUserId;
+    if (!peerId) continue;
+    const old = conversations.get(peerId);
+    if (!old || message.time >= old.lastTime) {
+      const incoming = message.fromUserId === peerId;
+      conversations.set(peerId, {
+        userId: peerId,
+        name: old?.name || (incoming ? message.name : message.toName) || `Người chơi ${peerId.slice(0, 6)}`,
+        avatarUrl: old?.avatarUrl || (incoming ? message.avatarUrl : message.toAvatarUrl) || null,
+        sessionId: old?.sessionId || null,
+        lastTime: message.time,
+        preview: message.text || (message.image ? 'Đã gửi ảnh' : ''),
+      });
+    }
+  }
+  const chatRooms = [...conversations.values()].sort((a, b) => b.lastTime - a.lastTime);
+  const unreadCount = (userId: string) => messages.filter((message) =>
+    message.to && message.fromUserId === userId && message.toUserId === playerId && message.time > (readAt[userId] || 0)).length;
+  const unreadTotal = chatRooms.reduce((sum, item) => sum + unreadCount(item.userId), 0);
+  const markRead = (userId: string, time = Date.now()) => {
+    if (!playerId) return;
+    setReadAt((current) => {
+      const next = { ...current, [userId]: Math.max(current[userId] || 0, time) };
+      localStorage.setItem(`netverse-chat-read:${playerId}`, JSON.stringify(next));
+      return next;
+    });
   };
   const visibleMessages = messages.filter((message) =>
     chatTarget
@@ -373,6 +472,7 @@ export default function NetverseWorldApp() {
           localName={player?.nickname}
           localFullname={player?.fullname}
           localAvatarUrl={player?.avatar_url}
+          localCharacterId={player?.character_id}
           localBalanceSeconds={seconds}
           localOnlineSeconds={onlineSeconds}
           localBadge={artist?.level?.name}
@@ -423,7 +523,7 @@ export default function NetverseWorldApp() {
               className={mainTab === 'community' ? 'selected' : ''}
               onClick={() => setMainTab('community')}
             >
-              CỘNG ĐỒNG ({players.length})
+              CỘNG ĐỒNG ({players.length}) {unreadTotal > 0 && <span className="unread-badge">{unreadTotal}</span>}
             </button>
             <button
               className={mainTab === 'rankings' ? 'selected' : ''}
@@ -471,6 +571,7 @@ export default function NetverseWorldApp() {
                 setProfileName(player.fullname);
                 setProfileNick(player.nickname);
                 setProfileImage(null);
+                setProfileCharacter(player.character_id || characters[0].id);
                 setProfileOpen(true);
               }}
             >
@@ -495,8 +596,7 @@ export default function NetverseWorldApp() {
                 <span>Chạy</span>
               </div>
               <div>
-                <kbd>CHUỘT</kbd>
-                <span>Nhấp vào game để xoay góc nhìn · Esc để thả</span>
+                <kbd>A</kbd><span>Trái</span><kbd>D</kbd><span>Phải · camera theo nhân vật</span>
               </div>
               <div>
                 <kbd>E</kbd>
@@ -527,14 +627,16 @@ export default function NetverseWorldApp() {
               seconds={seconds}
               viewerId={player.id}
               onlinePlayers={players}
+              onViewChange={reportDesktopView}
               onPrivateChat={(userId) => {
                 const target = players.find((item) => item.userId === userId && item.id !== sessionId);
                 if (!target || connection !== 'online') {
                   setNotice('Người này vừa offline. Hãy thử lại khi họ online.');
                   return;
                 }
-                setChatTarget({ sessionId: target.id, userId, name: target.name });
+                setChatTarget({ sessionId: target.id, userId, name: target.name, avatarUrl: target.avatarUrl });
                 setMainTab('community');
+                markRead(userId);
               }}
               onAlbumChange={() => {
                 room.current?.send('profile-refresh');
@@ -558,25 +660,15 @@ export default function NetverseWorldApp() {
                   >
                     # Phòng chung
                   </button>
-                  {players
-                    .filter((item) => item.id !== sessionId)
-                    .map((item) => (
+                  {chatRooms.map((item) => (
                       <button
-                        key={item.id}
-                        className={chatTarget?.sessionId === item.id ? 'selected' : ''}
-                        onClick={() =>
-                          setChatTarget({
-                            sessionId: item.id,
-                            userId: item.userId || item.id,
-                            name: item.name,
-                          })
-                        }
+                        key={item.userId}
+                        className={`${chatTarget?.userId === item.userId ? 'selected' : ''} ${unreadCount(item.userId) ? 'unread' : ''}`}
+                        onClick={() => { setChatTarget(item); markRead(item.userId); }}
                       >
-                        {item.avatarUrl && (
-                          <Image unoptimized src={item.avatarUrl} alt="" width={25} height={25} />
-                        )}
-                        {item.name}
-                        <small>Chat riêng</small>
+                        {item.avatarUrl ? <Image unoptimized src={item.avatarUrl} alt="" width={25} height={25} /> : <span className="chat-avatar">{item.name[0]}</span>}
+                        <span className="chat-room-label"><strong>{item.name}</strong><small>{item.preview}</small></span>
+                        {unreadCount(item.userId) > 0 && <span className="unread-badge">{unreadCount(item.userId)}</span>}
                       </button>
                     ))}
                 </div>
@@ -587,18 +679,8 @@ export default function NetverseWorldApp() {
                   <div className="chat-messages">
                     {visibleMessages.map((message) => (
                       <article key={message.id}>
-                        <b>
-                          {message.avatarUrl && (
-                            <Image
-                              unoptimized
-                              src={message.avatarUrl}
-                              alt=""
-                              width={18}
-                              height={18}
-                            />
-                          )}{' '}
-                          {message.name}
-                        </b>
+                        <b>{message.avatarUrl ? <Image unoptimized src={message.avatarUrl} alt="" width={25} height={25} /> : <span className="chat-avatar">{message.name[0]}</span>}{' '}{message.name}</b>
+                        <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</time>
                         <span>{message.text}</span>
                         {message.image && (
                           <Image
@@ -609,6 +691,7 @@ export default function NetverseWorldApp() {
                             height={180}
                           />
                         )}
+                        <button type="button" className={`heart-button ${(message.heartedBy || []).includes(player.id) ? 'selected' : ''}`} onClick={() => reactHeart(message)} aria-label="Thả tim tin nhắn">♥ {message.heartedBy?.length || ''}</button>
                       </article>
                     ))}
                     {!visibleMessages.length && <p>Chưa có tin nhắn trên máy này.</p>}
@@ -636,7 +719,7 @@ export default function NetverseWorldApp() {
                       placeholder="Nhắn cho người đang online..."
                       maxLength={240}
                     />
-                    <button disabled={connection !== 'online'}>GỬI</button>
+                    <button disabled={connection !== 'online' || Boolean(chatTarget && !players.some((item) => item.userId === chatTarget.userId))}>GỬI</button>
                   </form>
                 </div>
               </div>
@@ -718,6 +801,12 @@ export default function NetverseWorldApp() {
                         .catch((error) => setNotice(error.message))
                     }
                   />
+                </label>
+                <label>
+                  Nhân vật 3D
+                  <select value={profileCharacter} onChange={(event) => setProfileCharacter(event.target.value)}>
+                    {characters.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select>
                 </label>
                 <div>
                   <button onClick={() => setProfileOpen(false)}>HỦY</button>
@@ -816,7 +905,7 @@ export default function NetverseWorldApp() {
                 </form>
               </>
             )}
-            <small>Nhấp vào game để xoay camera · WASD di chuyển · E tương tác · Shift chạy</small>
+            <small>W tiến · S lùi · A trái · D phải · E tương tác · Shift chạy</small>
           </section>
         </div>
       )}

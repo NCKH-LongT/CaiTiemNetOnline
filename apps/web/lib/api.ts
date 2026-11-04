@@ -4,6 +4,7 @@ export type Player = {
   nickname: string;
   fullname: string;
   avatar_url: string | null;
+  character_id: string;
   x: number;
   z: number;
   balance_seconds: number;

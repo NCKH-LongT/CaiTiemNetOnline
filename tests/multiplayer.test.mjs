@@ -106,10 +106,12 @@ test('private chat reaches only online peers and snapshots contain no chat histo
     });
     const client = new Client(`http://127.0.0.1:${port}`);
     const received = [[], [], []];
+    const hearts = [[], [], []];
     for (const [index, name] of ['A', 'B', 'C'].entries()) {
       const room = await client.joinOrCreate('cafe', { name });
       rooms.push(room);
       room.onMessage('chat', (message) => received[index].push(message));
+      room.onMessage('chat-heart', (reaction) => hearts[index].push(reaction));
       room.onMessage('snapshot', () => {});
     }
     const [a, b] = rooms;
@@ -117,6 +119,16 @@ test('private chat reaches only online peers and snapshots contain no chat histo
     await waitFor(() => received[0].length === 1 && received[1].length === 1);
     assert.equal(received[2].length, 0);
     assert.equal(received[1][0].to, b.sessionId);
+    b.send('chat-heart', { messageId: received[1][0].id, hearted: true, to: a.sessionId });
+    await waitFor(() => hearts[0].length === 1 && hearts[1].length === 1);
+    assert.equal(hearts[0][0].messageId, received[1][0].id);
+    assert.equal(hearts[2].length, 0);
+    await delay(1100);
+    const image = `data:image/webp;base64,${Buffer.alloc(100_000).toString('base64')}`;
+    a.send('chat', { to: b.sessionId, image });
+    await waitFor(() => received[1].length === 2);
+    assert.equal(received[1][1].image, image);
+    assert.equal(received[2].length, 0);
 
     let lateSnapshot;
     const d = await client.joinOrCreate('cafe', { name: 'D' });

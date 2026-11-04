@@ -1,0 +1,13 @@
+- tôi muốn đổi cách di chuyển camera sẽ follow nhân vật game và không di chuyển qua lại bằng chuột được, nhân vật có thể xoay 4 hướng di chuyển qua 4 phím bàn phím, di chuyển hướng nào nó quay qua hướng đó di chuyển.
+- có thông báo có tin nhắn mới nếu có người inbox riêng ở tab cộng đồng,
+- ngoài ra trong khung chat và danh sách người chat thì có avatar và tên của người chat, nếu có tin nhắn mới thì chat room đó sẽ nhảy lên đầu phía sau #phòng chung
+- danh sách chat sẽ hiển thị tin nhắn chưa đọc và in đậm lên
+- bên trong từng tin nhắn nên có thời gian nhắn tin , nút thả tim cho tin nhắn đó,
+- gửi anh hiện tại chưa dùng được thông qua chat.
+- nhạc cộng đôgnf sẽ được gửi bằng link youtube để phát mặc định không phải là file tải.
+- admin sẽ có chức năng hiển thị danh sách người chơi, có trạng thái , thống kê từng người chơi net
+- admin có thể thấy danh sách phòng máy đang có , trạng thái đang hoạt động của từng pc
+- admin có thể bấm vào 1 usẻr hoặc pc đang được sử dụng để xem desktop họ đang xem gì .
+- admin ở phần 3 xây thế giới tôi scoll không không được. kiểm tra lại tính năng này, và thế giới đang được set up thế nào thì nó cũng phải hiện như vậy. có thể thay thế hoặc chỉnh sửa từng thứ.
+- tại sao khi vào lại nó lại không thấy những người chơi khác, hoặc đang ở admin chui ra lại homepage thì ko thấy. kiểm tra lại.
+- vào link https://drive.google.com/drive/folders/1UNNT0MeVX0O04RGgu8aLkKe3fwB9_t-A để tải 10 nhân vật trong này để khi user vào hoặc có thể thay đổi nhân vật, ngoài ra cần xác định nút "a" là qua trái , "d" là qua phải, tôi thấy nó hơi ngược.

@@ -4,11 +4,14 @@ export type LocalChatMessage = {
   fromUserId: string | null;
   to: string | null;
   toUserId: string | null;
+  toName?: string | null;
+  toAvatarUrl?: string | null;
   name: string;
   avatarUrl: string | null;
   text: string;
   image: string | null;
   time: number;
+  heartedBy?: string[];
 };
 type StoredMessage = LocalChatMessage & { key: string; ownerId: string };
 
@@ -39,11 +42,14 @@ export async function loadChatMessages(ownerId: string): Promise<LocalChatMessag
             fromUserId: item.fromUserId,
             to: item.to,
             toUserId: item.toUserId,
+            toName: item.toName || null,
+            toAvatarUrl: item.toAvatarUrl || null,
             name: item.name,
             avatarUrl: item.avatarUrl,
             text: item.text,
             image: item.image,
             time: item.time,
+            heartedBy: item.heartedBy || [],
           })),
       );
     request.onerror = () => reject(request.error);
