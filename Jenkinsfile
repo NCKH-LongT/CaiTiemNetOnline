@@ -1,5 +1,5 @@
 pipeline {
-  agent { label 'netverse-docker' }
+  agent any
   options {
     timestamps()
     disableConcurrentBuilds()
