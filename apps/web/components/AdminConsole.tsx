@@ -9,7 +9,8 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { api } from '@/lib/api';
 import { compressDesktopImage } from '@/lib/desktop-image';
-import { stations } from '@/lib/stations';
+import { stations, worldBounds } from '@/lib/stations';
+import { formatDuration } from '@/lib/time';
 import AssetErrorBoundary from './AssetErrorBoundary';
 
 type Asset = { id: string; name: string; asset_url: string; license: string; kind: string };
@@ -25,7 +26,7 @@ type Object3D = {
   published: boolean;
   assetId?: string;
 };
-type Level = { level: number; name: string; min_uploads: number; min_likes: number };
+type Level = { level: number; name: string; min_uploads: number; min_likes: number; badge_url: string | null };
 type Proposal = {
   assetId: string;
   x: number;
@@ -37,7 +38,7 @@ type Proposal = {
 type Config = { sitekey: string | null; configured: boolean; gemini: boolean };
 type Board = { background_url: string | null; background_color: string };
 type MusicTrack = { id: string; title: string; file_url: string; created_at: string };
-type AdminPlayer = { id: string; username: string; nickname: string; fullname: string; avatar_url: string | null; balance_seconds: number; online_seconds: number; donated_seconds: number; pc_count: number; art_count: number; created_at: string; live: { sessionId: string; seatedAt: number | null } | null };
+type AdminPlayer = { id: string; username: string; nickname: string; fullname: string; avatar_url: string | null; balance_seconds: number; online_seconds: number; donated_seconds: number; pc_count: number; art_count: number; created_at: string; live: { sessionId: string; seatedAt: number | null; onlineSeconds: number; seatedSeconds: number } | null };
 type AdminPc = { stationId: number; wallpaper_url?: string | null; browser_url?: string | null; userId: string | null; nickname: string | null; desktop: { tab: string; updatedAt: number } | null };
 type AdminArt = { id: string; title: string; image_url: string; nickname: string };
 type TurnstileApi = {
@@ -100,12 +101,12 @@ function PlacedModel({ object }: { object: Object3D }) {
 }
 
 function WorldPreview({ objects }: { objects: Object3D[] }) {
-  return <div className="admin-world-preview"><Canvas camera={{ position: [22, 44, 48], fov: 48 }}>
+  return <div className="admin-world-preview"><Canvas camera={{ position: [worldBounds.halfWidth * .65, worldBounds.halfLength * 1.3, worldBounds.halfLength * 1.35], fov: 48 }}>
     <color attach="background" args={['#171625']} />
     <ambientLight intensity={1.7} />
     <directionalLight position={[12, 30, 10]} intensity={2} />
-    <mesh rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[34, 66]} /><meshStandardMaterial color="#29263d" /></mesh>
-    <gridHelper args={[66, 33, '#5e517c', '#40394f']} position={[0, 0.02, 0]} />
+    <mesh rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[worldBounds.halfWidth * 2 + 1.8, worldBounds.halfLength * 2 + 1.8]} /><meshStandardMaterial color="#29263d" /></mesh>
+    <gridHelper args={[Math.max(worldBounds.halfWidth, worldBounds.halfLength) * 2, 40, '#5e517c', '#40394f']} position={[0, 0.02, 0]} />
     {stations.map((station) => <mesh key={station.stationId} position={[station.position[0], 0.28, station.position[2]]}>
       <boxGeometry args={[0.5, 0.55, 0.7]} /><meshStandardMaterial color="#8f78d5" />
     </mesh>)}
@@ -125,7 +126,10 @@ export default function AdminConsole() {
   const [playingTrack, setPlayingTrack] = useState<string | null>(null);
   const [musicTitle, setMusicTitle] = useState('');
   const [musicUrl, setMusicUrl] = useState('');
+  const [musicFile, setMusicFile] = useState<File | null>(null);
   const [adminPlayers, setAdminPlayers] = useState<AdminPlayer[]>([]);
+  const [playerFilter, setPlayerFilter] = useState<'all' | 'online' | 'seated'>('all');
+  const [playerSearch, setPlayerSearch] = useState('');
   const [adminPcs, setAdminPcs] = useState<AdminPc[]>([]);
   const [selectedPcId, setSelectedPcId] = useState<number | null>(null);
   const [pcFilter, setPcFilter] = useState<'all' | 'active'>('all');
@@ -239,13 +243,26 @@ export default function AdminConsole() {
   };
   const uploadMusic = async (event: React.FormEvent) => {
     event.preventDefault();
+    const formElement = event.currentTarget as HTMLFormElement;
     try {
-      const result = await api<{ track: MusicTrack }>('/api/admin/music', { title: musicTitle, youtubeUrl: musicUrl });
+      let audio: string | undefined;
+      if (musicFile) {
+        if (musicFile.size > 8_000_000 || !musicFile.name.toLowerCase().endsWith('.mp3')) throw new Error('MP3 phải nhỏ hơn 8 MB.');
+        audio = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).replace(/^data:[^;]*;base64,/, 'data:audio/mpeg;base64,'));
+          reader.onerror = () => reject(new Error('Không đọc được MP3.'));
+          reader.readAsDataURL(musicFile);
+        });
+      }
+      const result = await api<{ track: MusicTrack }>('/api/admin/music', { title: musicTitle, youtubeUrl: musicUrl, audio });
       setMusicTracks((current) => [result.track, ...current]);
       setPlayingTrack(result.track.id);
       setMusicTitle('');
       setMusicUrl('');
-      setNotice('Đã thêm link và phát nhạc cho cộng đồng.');
+      setMusicFile(null);
+      formElement.reset();
+      setNotice('Đã thêm và phát nhạc cho cộng đồng.');
     } catch (error) { setNotice((error as Error).message); }
   };
   const playMusic = async (trackId: string | null) => {
@@ -354,17 +371,17 @@ export default function AdminConsole() {
     const bounds = map.current!.getBoundingClientRect();
     return {
       x: Math.max(
-        -16,
+        -worldBounds.halfWidth,
         Math.min(
-          16,
-          Math.round((((event.clientX - bounds.left) / bounds.width) * 34 - 17) * 10) / 10,
+          worldBounds.halfWidth,
+          Math.round((((event.clientX - bounds.left) / bounds.width) * (worldBounds.halfWidth * 2 + 1.8) - (worldBounds.halfWidth + .9)) * 10) / 10,
         ),
       ),
       z: Math.max(
-        -32,
+        -worldBounds.halfLength,
         Math.min(
-          32,
-          Math.round((((event.clientY - bounds.top) / bounds.height) * 66 - 33) * 10) / 10,
+          worldBounds.halfLength,
+          Math.round((((event.clientY - bounds.top) / bounds.height) * (worldBounds.halfLength * 2 + 1.8) - (worldBounds.halfLength + .9)) * 10) / 10,
         ),
       ),
     };
@@ -376,6 +393,23 @@ export default function AdminConsole() {
     } catch (error) {
       setNotice((error as Error).message);
     }
+  };
+  const uploadBadge = async (level: number, file: File) => {
+    const kind = file.name.toLowerCase().endsWith('.gif') ? 'gif' : file.name.toLowerCase().endsWith('.png') ? 'png' : null;
+    if (!kind || file.size > 2_000_000) {
+      setNotice('Huy hiệu phải là PNG/GIF dưới 2 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const image = String(reader.result).replace(/^data:[^;]*;base64,/, `data:image/${kind};base64,`);
+        const result = await api<{ badgeUrl: string }>('/api/admin/levels/badge', { image });
+        setLevels((current) => current.map((item) => item.level === level ? { ...item, badge_url: result.badgeUrl } : item));
+        setNotice('Đã tải huy hiệu. Nhấn LƯU CẤP BẬC để áp dụng.');
+      } catch (cause) { setNotice((cause as Error).message); }
+    };
+    reader.readAsDataURL(file);
   };
   const saveBoard = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -457,17 +491,24 @@ export default function AdminConsole() {
           <section className="admin-card admin-overview">
             <h2>Người chơi ({adminPlayers.length})</h2>
             <p>{adminPlayers.filter((item) => item.live).length} người online · nhấn người chơi đang sử dụng PC để xem desktop.</p>
+            <div className="admin-player-filters">
+              <input aria-label="Tìm theo nickname" placeholder="Tìm nickname" value={playerSearch} onChange={(event) => setPlayerSearch(event.target.value)} />
+              <select aria-label="Lọc người chơi" value={playerFilter} onChange={(event) => setPlayerFilter(event.target.value as 'all' | 'online' | 'seated')}>
+                <option value="all">Tất cả</option><option value="online">Đang online</option><option value="seated">Đang ở PC</option>
+              </select>
+            </div>
             <div className="admin-player-list">
-              {adminPlayers.map((item) => <button key={item.id} type="button" onClick={() => setSelectedPcId(item.live?.seatedAt || null)}>
+              {adminPlayers.filter((item) => item.nickname.toLocaleLowerCase().includes(playerSearch.trim().toLocaleLowerCase()) &&
+                (playerFilter === 'all' || (playerFilter === 'online' && item.live) || (playerFilter === 'seated' && item.live?.seatedAt))).map((item) => <button key={item.id} type="button" onClick={() => setSelectedPcId(item.live?.seatedAt || null)}>
                 {item.avatar_url ? <Image unoptimized src={item.avatar_url} alt="" width={32} height={32} /> : <span className="admin-avatar">{item.nickname[0]}</span>}
                 <span><strong>{item.nickname}</strong><small>@{item.username} · {item.fullname}</small></span>
                 <span className={item.live ? 'admin-online' : ''}>{item.live ? item.live.seatedAt ? `Đang dùng PC #${item.live.seatedAt}` : 'Online' : 'Offline'}</span>
-                <small>{Math.floor(item.online_seconds / 60)} phút online · {Math.floor(item.balance_seconds / 60)} phút còn · {item.pc_count} PC · {item.art_count} tranh</small>
+                <small>Online {formatDuration(item.live?.onlineSeconds ?? item.online_seconds)} · Ngồi PC {formatDuration(item.live?.seatedSeconds ?? 0)} · Còn {formatDuration(item.balance_seconds)} · {item.pc_count} PC · {item.art_count} tranh</small>
               </button>)}
             </div>
           </section>
           <section className="admin-card admin-overview">
-            <h2>Phòng máy ({adminPcs.filter((item) => item.userId).length}/200 hoạt động)</h2>
+            <h2>Phòng máy ({adminPcs.filter((item) => item.userId).length}/{stations.length} hoạt động)</h2>
             <div className="pc-filters"><button className={pcFilter === 'all' ? 'selected' : ''} onClick={() => setPcFilter('all')}>TẤT CẢ</button><button className={pcFilter === 'active' ? 'selected' : ''} onClick={() => setPcFilter('active')}>ĐANG DÙNG</button></div>
             <div className="admin-pc-grid">
               {adminPcs.filter((item) => pcFilter === 'all' || item.userId).map((item) => <button key={item.stationId} className={`${item.userId ? 'active' : ''} ${selectedPcId === item.stationId ? 'selected' : ''}`} onClick={() => setSelectedPcId(item.stationId)} title={item.nickname || 'Máy trống'}>#{item.stationId}<small>{item.nickname || 'Trống'}</small></button>)}
@@ -493,11 +534,12 @@ export default function AdminConsole() {
           </section>
           <section className="admin-card admin-music">
             <h2>Nhạc cộng đồng</h2>
-            <p>Dán link YouTube. Bài admin chọn sẽ phát mặc định cho cộng đồng; mỗi người có thể tự tắt.</p>
+            <p>Tải MP3 để phát âm thanh nền đồng bộ, hoặc thêm link YouTube để phát khi người chơi mở video.</p>
             <form onSubmit={uploadMusic}>
               <input value={musicTitle} onChange={(event) => setMusicTitle(event.target.value)} placeholder="Tên bài nhạc" required maxLength={100} aria-label="Tên bài nhạc" />
-              <input type="url" value={musicUrl} onChange={(event) => setMusicUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." required aria-label="Link YouTube" />
-              <button type="submit">THÊM LINK</button>
+              <input type="url" value={musicUrl} onChange={(event) => setMusicUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." required={!musicFile} aria-label="Link YouTube" />
+              <input type="file" accept="audio/mpeg,.mp3" onChange={(event) => setMusicFile(event.target.files?.[0] || null)} aria-label="Tải MP3" />
+              <button type="submit">THÊM NHẠC</button>
             </form>
             <div className="admin-music-list">
               {musicTracks.map((track) => <div key={track.id}>
@@ -646,8 +688,8 @@ export default function AdminConsole() {
                   key={station.stationId}
                   className="station-dot"
                   style={{
-                    left: `${((station.position[0] + 17) / 34) * 100}%`,
-                    top: `${((station.position[2] + 33) / 66) * 100}%`,
+                    left: `${((station.position[0] + worldBounds.halfWidth + .9) / (worldBounds.halfWidth * 2 + 1.8)) * 100}%`,
+                    top: `${((station.position[2] + worldBounds.halfLength + .9) / (worldBounds.halfLength * 2 + 1.8)) * 100}%`,
                   }}
                   title={`PC ${station.stationId}`}
                 />
@@ -657,8 +699,8 @@ export default function AdminConsole() {
                   key={object.id}
                   className={`object-dot ${object.published ? 'published' : ''}`}
                   style={{
-                    left: `${((object.x + 17) / 34) * 100}%`,
-                    top: `${((object.z + 33) / 66) * 100}%`,
+                    left: `${((object.x + worldBounds.halfWidth + .9) / (worldBounds.halfWidth * 2 + 1.8)) * 100}%`,
+                    top: `${((object.z + worldBounds.halfLength + .9) / (worldBounds.halfLength * 2 + 1.8)) * 100}%`,
                   }}
                   title={object.asset_url}
                   onClick={() => setSelectedObject(object)}
@@ -682,7 +724,7 @@ export default function AdminConsole() {
                 />
               ))}
             </div>
-            <small>200 máy được hiển thị bằng chấm tím. Vật thể xuất bản màu xanh.</small>
+            <small>{stations.length} máy được hiển thị bằng chấm tím. Vật thể xuất bản màu xanh.</small>
             {selectedObject && (
               <div className="object-controls">
                 <h3>Vật thể đã chọn</h3>
@@ -762,6 +804,9 @@ export default function AdminConsole() {
               {levels.map((item, index) => (
                 <div key={item.level}>
                   <b>{item.level}</b>
+                  {item.badge_url && <Image unoptimized src={item.badge_url} alt={`Huy hiệu ${item.name}`} width={38} height={38} />}
+                  <label className="admin-badge-upload">TẢI HUY HIỆU<input type="file" accept="image/png,image/gif" onChange={(event) => event.target.files?.[0] && uploadBadge(item.level, event.target.files[0])} /></label>
+                  {item.badge_url && <button type="button" onClick={() => setLevels((current) => current.map((row) => row.level === item.level ? { ...row, badge_url: null } : row))}>XÓA</button>}
                   <input
                     value={item.name}
                     onChange={(event) =>

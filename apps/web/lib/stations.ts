@@ -25,6 +25,7 @@ export const stations: Station[] = world.stations.map((item) => {
 });
 
 export const spawn: Point3 = [world.spawn[0], world.spawn[1], world.spawn[2]];
+export const entranceZ = world.entranceZ;
 export const worldBounds = { halfWidth: world.width / 2 - 0.9, halfLength: world.length / 2 - 0.9 };
 
 export function nearestStation(x: number, z: number): Station | null {

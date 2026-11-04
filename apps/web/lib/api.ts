@@ -34,6 +34,7 @@ export type PublicProfile = {
   uploads: number;
   likes: number;
   badge: string | null;
+  badge_url: string | null;
 };
 
 export async function api<T>(path: string, value?: unknown): Promise<T> {

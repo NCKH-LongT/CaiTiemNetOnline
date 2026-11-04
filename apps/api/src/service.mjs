@@ -2,6 +2,7 @@ import { readFile, mkdir, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import characters from '../../../shared/characters.json' with { type: 'json' };
+import world from '../../../shared/world.json' with { type: 'json' };
 import {
   cookie,
   hashPassword,
@@ -67,17 +68,21 @@ export async function createSession(pool, response, playerId) {
   setCookie(response, 'netverse_session', token, 30 * 24 * 3600);
 }
 export async function storeImage(dataUrl, kind) {
-  const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || '');
+  const match = /^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || '');
   if (!match) throw error('invalid_image');
   const buffer = Buffer.from(match[2], 'base64');
   if (!buffer.length || buffer.length > 2_000_000) throw error('image_size');
   const mime = match[1];
+  if (mime === 'gif' && kind !== 'badge') throw error('invalid_image');
+  if (kind === 'badge' && !['png', 'gif'].includes(mime)) throw error('invalid_image');
   const valid =
     mime === 'png'
       ? buffer.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
-      : mime === 'jpeg'
-        ? buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff
-        : buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
+      : mime === 'gif'
+        ? ['GIF87a', 'GIF89a'].includes(buffer.toString('ascii', 0, 6))
+        : mime === 'jpeg'
+          ? buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff
+          : buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
   if (!valid) throw error('invalid_image');
   const filename = `${kind}-${randomUUID()}.${mime === 'jpeg' ? 'jpg' : mime}`;
   await mkdir(dataDir, { recursive: true });
@@ -85,7 +90,7 @@ export async function storeImage(dataUrl, kind) {
   return `/api/media/${filename}`;
 }
 export async function serveMedia(response, filename, request) {
-  if (!/^[a-z]+-[0-9a-f-]+\.(png|jpg|webp|glb|gltf|mp3)$/.test(filename))
+  if (!/^[a-z]+-[0-9a-f-]+\.(png|jpg|webp|gif|glb|gltf|mp3)$/.test(filename))
     return json(response, 404, { error: 'not_found' });
   try {
     const file = await readFile(path.join(dataDir, filename));
@@ -103,6 +108,7 @@ export async function serveMedia(response, filename, request) {
         png: 'image/png',
         jpg: 'image/jpeg',
         webp: 'image/webp',
+        gif: 'image/gif',
         glb: 'model/gltf-binary',
         gltf: 'model/gltf+json',
         mp3: 'audio/mpeg',
@@ -196,7 +202,7 @@ export async function playerRoutes(pool, redis, request, response, route) {
       ),
     ]);
     const level = await pool.query(
-      'SELECT level,name FROM artist_levels WHERE min_uploads <= $1 AND min_likes <= $2 ORDER BY level DESC LIMIT 1',
+      'SELECT level,name,badge_url FROM artist_levels WHERE min_uploads <= $1 AND min_likes <= $2 ORDER BY level DESC LIMIT 1',
       [uploads.rows[0].total, likes.rows[0].total],
     );
     return json(response, 200, {
@@ -210,7 +216,7 @@ export async function playerRoutes(pool, redis, request, response, route) {
     const data = await body(request);
     const x = Number(data.x),
       z = Number(data.z);
-    if (!Number.isFinite(x) || !Number.isFinite(z) || Math.abs(x) > 16.1 || Math.abs(z) > 32.1)
+    if (!Number.isFinite(x) || !Number.isFinite(z) || Math.abs(x) > world.width / 2 - 0.9 || Math.abs(z) > world.length / 2 - 0.9)
       throw error('invalid_position');
     await pool.query('UPDATE players SET x=$1,z=$2 WHERE id=$3', [x, z, player.id]);
     return json(response, 200, { saved: true });
@@ -293,7 +299,11 @@ export async function contentRoutes(pool, redis, request, response, route) {
         (SELECT name FROM artist_levels WHERE min_uploads <=
           (SELECT count(*) FROM art_images a WHERE a.player_id=p.id) AND min_likes <=
           (SELECT count(*) FROM art_votes v JOIN art_images a ON a.id=v.image_id WHERE a.player_id=p.id AND v.vote=1)
-          ORDER BY level DESC LIMIT 1) AS badge
+          ORDER BY level DESC LIMIT 1) AS badge,
+        (SELECT badge_url FROM artist_levels WHERE min_uploads <=
+          (SELECT count(*) FROM art_images a WHERE a.player_id=p.id) AND min_likes <=
+          (SELECT count(*) FROM art_votes v JOIN art_images a ON a.id=v.image_id WHERE a.player_id=p.id AND v.vote=1)
+          ORDER BY level DESC LIMIT 1) AS badge_url
        FROM players p WHERE p.id=$1`,
       [publicProfile[1]],
     );
@@ -318,7 +328,7 @@ export async function contentRoutes(pool, redis, request, response, route) {
   const pcMatch = /^\/api\/pc\/(\d+)$/.exec(route);
   if (pcMatch) {
     const stationId = Number(pcMatch[1]);
-    if (stationId < 1 || stationId > 200) throw error('not_found', 404);
+    if (stationId < 1 || stationId > world.stations.length) throw error('not_found', 404);
     if (method === 'GET') {
       const [state, images] = await Promise.all([
         pool.query('SELECT wallpaper_url,browser_url FROM pc_states WHERE station_id=$1', [
@@ -366,11 +376,69 @@ export async function contentRoutes(pool, redis, request, response, route) {
     }
   }
   const player = await session(pool, request);
+  if (route === '/api/shortcuts' && method === 'GET') {
+    if (!player) throw error('login_required', 401);
+    const result = await pool.query(`SELECT s.id,s.title,s.url,s.player_id,p.nickname,
+      count(v.player_id) FILTER (WHERE v.vote=1)::int AS likes,
+      count(v.player_id) FILTER (WHERE v.vote=-1)::int AS dislikes,
+      max(v.vote) FILTER (WHERE v.player_id=$1) AS my_vote
+      FROM web_shortcuts s JOIN players p ON p.id=s.player_id
+      LEFT JOIN web_shortcut_votes v ON v.shortcut_id=s.id
+      WHERE s.deleted_at IS NULL GROUP BY s.id,p.id ORDER BY s.created_at DESC LIMIT 100`, [player.id]);
+    return json(response, 200, { shortcuts: result.rows });
+  }
+  if (route === '/api/shortcuts' && method === 'POST') {
+    if (!player) throw error('login_required', 401);
+    const data = await body(request);
+    const title = String(data.title || '').trim().slice(0, 60);
+    let url;
+    try { url = new URL(String(data.url || '').trim()); } catch { throw error('invalid_url'); }
+    if (!title || url.protocol !== 'https:' || !url.hostname.includes('.') || url.username || url.password ||
+      url.href.length > 2048 || url.host === request.headers.host) throw error('invalid_shortcut');
+    url.hash = '';
+    const result = await pool.query('INSERT INTO web_shortcuts (id,player_id,title,url) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id',
+      [randomUUID(), player.id, title, url.href]);
+    if (!result.rowCount) throw error('shortcut_exists', 409);
+    return json(response, 201, { id: result.rows[0].id });
+  }
+  if (route === '/api/shortcuts/vote' && method === 'POST') {
+    if (!player) throw error('login_required', 401);
+    const data = await body(request);
+    if (![-1, 1].includes(data.vote) || !/^[0-9a-f-]{36}$/i.test(String(data.shortcutId || '')))
+      throw error('invalid_vote');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const shortcut = await client.query('SELECT player_id FROM web_shortcuts WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [data.shortcutId]);
+      if (!shortcut.rowCount || shortcut.rows[0].player_id === player.id) throw error('invalid_shortcut', 403);
+      await client.query(`INSERT INTO web_shortcut_votes (shortcut_id,player_id,vote) VALUES ($1,$2,$3)
+        ON CONFLICT (shortcut_id,player_id) DO UPDATE SET vote=EXCLUDED.vote`, [data.shortcutId, player.id, data.vote]);
+      const counts = await client.query(`SELECT count(*) FILTER (WHERE vote=1)::int AS likes,
+        count(*) FILTER (WHERE vote=-1)::int AS dislikes FROM web_shortcut_votes WHERE shortcut_id=$1`, [data.shortcutId]);
+      const { likes, dislikes } = counts.rows[0];
+      const deleted = dislikes >= 5 && dislikes > likes * 2;
+      if (deleted) await client.query('UPDATE web_shortcuts SET deleted_at=now() WHERE id=$1', [data.shortcutId]);
+      await client.query('COMMIT');
+      return json(response, 200, { likes, dislikes, deleted });
+    } catch (cause) {
+      await client.query('ROLLBACK');
+      throw cause;
+    } finally { client.release(); }
+  }
+  if (route === '/api/art/wall' && method === 'GET') {
+    const [total, images] = await Promise.all([
+      pool.query('SELECT count(*)::int AS total FROM art_images WHERE deleted_at IS NULL'),
+      pool.query(`SELECT a.id,a.station_id,a.image_url,a.title,p.nickname FROM art_images a
+        JOIN players p ON p.id=a.player_id WHERE a.deleted_at IS NULL
+        ORDER BY md5(a.id::text || current_date::text) LIMIT 48`),
+    ]);
+    return json(response, 200, { total: total.rows[0].total, images: images.rows });
+  }
   if (route === '/api/art/upload' && method === 'POST') {
     if (!player) throw error('login_required', 401);
     const data = await body(request);
     const stationId = Number(data.stationId);
-    if (!Number.isInteger(stationId) || stationId < 1 || stationId > 200)
+    if (!Number.isInteger(stationId) || stationId < 1 || stationId > world.stations.length)
       throw error('invalid_station');
     await requireSeat(redis, player.id, stationId);
     const image = await storeImage(data.image, 'art');

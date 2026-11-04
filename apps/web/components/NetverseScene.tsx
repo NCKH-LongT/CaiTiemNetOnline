@@ -8,7 +8,10 @@ import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { characterUrl } from '@/lib/characters';
 import GamingStation from './GamingStation';
 import AssetErrorBoundary from './AssetErrorBoundary';
-import { canMoveTo, nearestStation, stations, worldBounds, type Point3 } from '@/lib/stations';
+import { canMoveTo, nearestStation, stations, worldBounds, entranceZ, type Point3 } from '@/lib/stations';
+import { formatDuration } from '@/lib/time';
+import { api } from '@/lib/api';
+import Image from 'next/image';
 
 export type RemotePlayer = {
   id: string;
@@ -24,6 +27,7 @@ export type RemotePlayer = {
   balanceSeconds?: number;
   onlineSeconds?: number;
   badge?: string | null;
+  badgeUrl?: string | null;
 };
 
 type Props = {
@@ -43,6 +47,11 @@ type Props = {
   localBalanceSeconds?: number;
   localOnlineSeconds?: number;
   localBadge?: string | null;
+  localBadgeUrl?: string | null;
+  wallImages: WallArt[];
+  wallTotal: number;
+  onWallArtClick: (image: WallArt) => void;
+  orbit: React.RefObject<{ yaw: number; pitch: number }>;
   leaderboard?: {
     rich: { nickname: string; balance_seconds: number }[];
     donors: { nickname: string; donated_seconds: number }[];
@@ -61,6 +70,7 @@ function AvatarTag({
   balanceSeconds = 0,
   onlineSeconds = 0,
   badge,
+  badgeUrl,
 }: {
   name: string;
   fullname?: string;
@@ -68,6 +78,7 @@ function AvatarTag({
   balanceSeconds?: number;
   onlineSeconds?: number;
   badge?: string | null;
+  badgeUrl?: string | null;
 }) {
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   useEffect(() => {
@@ -103,17 +114,18 @@ function AvatarTag({
       }
       context.fillStyle = '#fff';
       context.font = 'bold 29px sans-serif';
-      context.fillText(name.slice(0, 20), 122, 45);
+      context.fillText(fullname || name, 122, 45, 370);
       context.fillStyle = '#b9acd4';
       context.font = '20px sans-serif';
-      context.fillText((fullname || '').slice(0, 29), 122, 72);
+      context.fillText(`@${name.slice(0, 29)}`, 122, 72);
       context.fillStyle = '#9debd2';
-      context.font = '19px sans-serif';
-      context.fillText(`Còn ${Math.floor(balanceSeconds / 60)}p · Online ${Math.floor(onlineSeconds / 3600)}h ${Math.floor(onlineSeconds % 3600 / 60)}p`, 122, 110);
+      context.font = '17px sans-serif';
+      context.fillText(`Còn ${formatDuration(balanceSeconds)}`, 122, 107);
+      context.fillText(`Online ${formatDuration(onlineSeconds)}`, 122, 130);
       if (badge && badge !== 'Tân binh') {
         context.fillStyle = '#f1d18b';
         context.font = 'bold 19px sans-serif';
-        context.fillText(`✦ ${badge.slice(0, 25)}`, 122, 145);
+        context.fillText(`✦ ${badge.slice(0, 25)}`, 122, 158);
       }
       const next = new THREE.CanvasTexture(canvas);
       setTexture((old) => {
@@ -123,7 +135,7 @@ function AvatarTag({
     };
     paint();
     if (avatarUrl) {
-      const image = new Image();
+      const image = new window.Image();
       portraitImage = image;
       image.onload = () => paint(image);
       image.src = avatarUrl;
@@ -137,11 +149,42 @@ function AvatarTag({
       });
     };
   }, [name, fullname, avatarUrl, balanceSeconds, onlineSeconds, badge]);
-  return texture ? (
-    <sprite position={[0, 2.45, 0]} scale={[2.2, 0.77, 1]}>
+  return <>
+    {texture && <sprite position={[0, 2.45, 0]} scale={[2.2, 0.77, 1]}>
       <spriteMaterial map={texture} transparent depthTest={false} />
-    </sprite>
-  ) : null;
+    </sprite>}
+    {badgeUrl && <BadgeSprite url={badgeUrl} />}
+  </>;
+}
+
+function BadgeSprite({ url }: { url: string }) {
+  const canvas = useRef<HTMLCanvasElement | null>(null);
+  const textureRef = useRef<THREE.CanvasTexture | null>(null);
+  const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
+  const image = useRef<HTMLImageElement | null>(null);
+  const lastPaint = useRef(0);
+  useEffect(() => {
+    const node = document.createElement('canvas');
+    node.width = 128;
+    node.height = 128;
+    canvas.current = node;
+    const next = new THREE.CanvasTexture(node);
+    textureRef.current = next;
+    const source = new window.Image();
+    source.onload = () => { image.current = source; lastPaint.current = 0; setTexture(next); };
+    source.src = url;
+    return () => { source.onload = null; image.current = null; next.dispose(); textureRef.current = null; canvas.current = null; };
+  }, [url]);
+  useFrame(({ clock }) => {
+    if (!image.current || clock.elapsedTime - lastPaint.current < (url.endsWith('.gif') ? .1 : 3600)) return;
+    const context = canvas.current?.getContext('2d');
+    if (!context) return;
+    context.clearRect(0, 0, 128, 128);
+    context.drawImage(image.current, 0, 0, 128, 128);
+    if (textureRef.current) textureRef.current.needsUpdate = true;
+    lastPaint.current = clock.elapsedTime;
+  });
+  return texture && <sprite position={[0, 3.12, 0]} scale={[.72, .72, 1]}><spriteMaterial map={texture} transparent depthTest={false} /></sprite>;
 }
 
 type WorldObject = {
@@ -153,6 +196,28 @@ type WorldObject = {
   rotation: number;
   scale: number;
 };
+type WallArt = { id: string; station_id: number; image_url: string; title: string; nickname: string };
+
+function WallPicture({ art, index, total, onClick }: { art: WallArt; index: number; total: number; onClick: () => void }) {
+  const texture = useLoader(THREE.TextureLoader, art.image_url);
+  const source = texture.image as HTMLImageElement;
+  const aspect = source.width && source.height ? source.width / source.height : 1;
+  const width = Math.max(.65, Math.min(2.5, 5.6 / Math.sqrt(Math.max(1, total / 4))));
+  const height = Math.min(1.18, width / Math.max(.25, aspect));
+  const displayWidth = Math.min(width, height * aspect);
+  const corner = index % 4;
+  const slot = Math.floor(index / 4);
+  const wallX = corner < 2 ? -worldBounds.halfWidth - .75 : worldBounds.halfWidth + .75;
+  const wallZ = (corner % 2 === 0 ? -1 : 1) * (worldBounds.halfLength - 7);
+  const z = wallZ + (slot % 4 - 1.5) * 2.9;
+  const y = 1.1 + Math.floor(slot / 4) * 1.36;
+  return <group position={[wallX, y, z]} rotation={[0, wallX < 0 ? Math.PI / 2 : -Math.PI / 2, 0]}>
+    <mesh onClick={(event) => { event.stopPropagation(); onClick(); }}>
+      <planeGeometry args={[displayWidth, height]} />
+      <meshBasicMaterial map={texture} side={THREE.DoubleSide} />
+    </mesh>
+  </group>;
+}
 function WorldAsset({ object }: { object: WorldObject }) {
   const gltf = useLoader(GLTFLoader, object.asset_url);
   return (
@@ -217,7 +282,7 @@ function LeaderboardBoard({ data }: { data?: Props['leaderboard'] }) {
       .slice(0, 5)
       .forEach((item, index) =>
         context.fillText(
-          `${index + 1}. ${item.nickname.slice(0, 18)} · ${Math.floor(item.balance_seconds / 60)}p`,
+          `${index + 1}. ${item.nickname.slice(0, 18)} · ${formatDuration(item.balance_seconds)}`,
           45,
           185 + index * 55,
         ),
@@ -226,7 +291,7 @@ function LeaderboardBoard({ data }: { data?: Props['leaderboard'] }) {
       .slice(0, 5)
       .forEach((item, index) =>
         context.fillText(
-          `${index + 1}. ${item.nickname.slice(0, 18)} · ${Math.floor(item.donated_seconds / 60)}p`,
+          `${index + 1}. ${item.nickname.slice(0, 18)} · ${formatDuration(item.donated_seconds)}`,
           530,
           185 + index * 55,
         ),
@@ -240,7 +305,7 @@ function LeaderboardBoard({ data }: { data?: Props['leaderboard'] }) {
     [texture],
   );
   return (
-    <group position={[0, 3.2, -30.5]}>
+    <group position={[0, 3.2, -worldBounds.halfLength + .7]}>
       <mesh>
         <boxGeometry args={[8.3, 4.3, 0.2]} />
         <meshStandardMaterial color={data?.board?.background_color || '#231c3c'} />
@@ -276,6 +341,7 @@ function Avatar({
   balanceSeconds,
   onlineSeconds,
   badge,
+  badgeUrl,
 }: {
   position: Point3;
   seated?: boolean;
@@ -290,6 +356,7 @@ function Avatar({
   balanceSeconds?: number;
   onlineSeconds?: number;
   badge?: string | null;
+  badgeUrl?: string | null;
 }) {
   const body = useRef<THREE.Mesh>(null);
   const leftLeg = useRef<THREE.Mesh>(null);
@@ -333,7 +400,7 @@ function Avatar({
             </mesh>
           ))}
       </group>}
-      {name && <AvatarTag name={name} fullname={fullname} avatarUrl={avatarUrl} balanceSeconds={balanceSeconds} onlineSeconds={onlineSeconds} badge={badge} />}
+      {name && <AvatarTag name={name} fullname={fullname} avatarUrl={avatarUrl} balanceSeconds={balanceSeconds} onlineSeconds={onlineSeconds} badge={badge} badgeUrl={badgeUrl} />}
     </group>
   );
 }
@@ -393,25 +460,25 @@ function RoomShell() {
         args={[Math.max(width, length), 50, '#4c4564', '#343645']}
         position={[0, 0.008, 0]}
       />
-      <mesh position={[0, 1.7, -length / 2]} receiveShadow>
-        <boxGeometry args={[width, 3.4, 0.18]} />
+      <mesh position={[0, 3.25, -length / 2]} receiveShadow>
+        <boxGeometry args={[width, 6.5, 0.18]} />
         <meshStandardMaterial color="#29243a" />
       </mesh>
       {[-width / 2, width / 2].map((x) => (
-        <mesh key={x} position={[x, 1.7, 0]} receiveShadow>
-          <boxGeometry args={[0.18, 3.4, length]} />
+        <mesh key={x} position={[x, 3.25, 0]} receiveShadow>
+          <boxGeometry args={[0.18, 6.5, length]} />
           <meshStandardMaterial color="#242231" />
         </mesh>
       ))}
-      {[-18, -9, 0, 9, 18].map((z) => (
-        <group key={z} position={[0, 3.1, z]}>
-          <mesh>
-            <boxGeometry args={[width - 2, 0.08, 0.28]} />
-            <meshBasicMaterial color="#ad9ae8" />
-          </mesh>
-        </group>
-      ))}
-      <mesh position={[0, 2.7, -length / 2 + 0.12]}>
+      <mesh position={[0, 6.5, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[width, length]} /><meshStandardMaterial color="#353247" side={THREE.DoubleSide} />
+      </mesh>
+      {Array.from({ length: 7 }, (_, row) => -36 + row * 12).flatMap((z) =>
+        Array.from({ length: 5 }, (_, column) => -29 + column * 14.5).map((x) => <group key={`${x}:${z}`} position={[x, 6.16, z]}>
+          <mesh><boxGeometry args={[4.8, .12, .8]} /><meshStandardMaterial color="#dfd8fb" emissive="#b9e9ec" emissiveIntensity={2} /></mesh>
+          <mesh position={[0, -.13, 0]}><boxGeometry args={[4.3, .08, .55]} /><meshBasicMaterial color="#f6f4ff" /></mesh>
+        </group>))}
+      <mesh position={[0, 4.9, -length / 2 + 0.12]}>
         <boxGeometry args={[8, 1.5, 0.08]} />
         <meshBasicMaterial color="#392660" />
       </mesh>
@@ -425,6 +492,10 @@ function RoomShell() {
 
 function World(props: Props) {
   const { camera } = useThree();
+  const areaLight = useRef<THREE.PointLight>(null);
+  const wallSlots = useMemo(() => props.wallImages.length
+    ? Array.from({ length: Math.max(4, props.wallImages.length) }, (_, index) => ({ art: props.wallImages[index % props.wallImages.length], index }))
+    : [], [props.wallImages]);
   const avatarGroup = useRef<THREE.Group>(null);
   const avatarPosition = useRef<Point3>([...props.startPosition]);
   const heading = useRef(0);
@@ -477,7 +548,7 @@ function World(props: Props) {
         const nextX = position[0] + dx * speed * Math.min(delta, 0.05);
         const nextZ = position[2] + dz * speed * Math.min(delta, 0.05);
         const x = canMoveTo(nextX, position[2]) ? nextX : position[0];
-        const z = canMoveTo(x, nextZ) && (props.canEnterCafe || nextZ >= 25) ? nextZ : position[2];
+        const z = canMoveTo(x, nextZ) && (props.canEnterCafe || nextZ >= entranceZ) ? nextZ : position[2];
         avatarPosition.current = [x, 0, z];
         props.onPositionChange(x, z);
         const desiredHeading = Math.atan2(dx, dz);
@@ -491,6 +562,7 @@ function World(props: Props) {
       }
     }
     const current = avatarPosition.current;
+    if (areaLight.current) areaLight.current.position.set(current[0], 5.8, current[2]);
     const cell = `${Math.floor(current[0] / 4)}:${Math.floor(current[2] / 4)}`;
     if (cell !== visibleCell.current) {
       visibleCell.current = cell;
@@ -524,15 +596,16 @@ function World(props: Props) {
       );
       cameraTarget.current.set(...seatedStation.screenAnchor);
     } else {
+      const orbit = props.orbit.current;
       target.current.set(
-        current[0],
-        3.1,
-        current[2] + 5.2,
+        current[0] + Math.sin(orbit.yaw) * 5.2,
+        3.1 + orbit.pitch * 3,
+        current[2] + Math.cos(orbit.yaw) * 5.2,
       );
       cameraTarget.current.set(
         current[0],
         1.25,
-        current[2] - 2,
+        current[2],
       );
     }
     camera.position.lerp(target.current, Math.min(1, delta * 3.2));
@@ -545,6 +618,7 @@ function World(props: Props) {
       <color attach="background" args={['#191827']} />
       <fog attach="fog" args={['#191827', 25, 48]} />
       <ambientLight intensity={1.3} color="#c7b4ec" />
+      <pointLight ref={areaLight} intensity={32} distance={23} color="#f2e9ff" />
       <directionalLight
         position={[4, 9, 6]}
         intensity={2.2}
@@ -553,6 +627,14 @@ function World(props: Props) {
       />
       <RoomShell />
       <LeaderboardBoard data={props.leaderboard} />
+      <Suspense fallback={null}>
+        {wallSlots.filter(({ index }) => {
+          const corner = index % 4;
+          const x = corner < 2 ? -worldBounds.halfWidth : worldBounds.halfWidth;
+          const z = (corner % 2 === 0 ? -1 : 1) * (worldBounds.halfLength - 7);
+          return Math.hypot(x - visibleCenter[0], z - visibleCenter[2]) < 34;
+        }).map(({ art, index }) => <AssetErrorBoundary key={`${art.id}:${index}`}><WallPicture art={art} index={index} total={props.wallTotal} onClick={() => props.onWallArtClick(art)} /></AssetErrorBoundary>)}
+      </Suspense>
       <Suspense fallback={null}>
         {worldObjects
           .filter(
@@ -579,13 +661,14 @@ function World(props: Props) {
           seated={Boolean(seatedStation)}
           kneeling={props.kneeling}
           movement={movementAmount}
-          name={seatedStation ? undefined : props.localName}
+          name={props.localName}
           fullname={props.localFullname}
           avatarUrl={props.localAvatarUrl}
           characterId={props.localCharacterId}
           balanceSeconds={props.localBalanceSeconds}
           onlineSeconds={props.localOnlineSeconds}
           badge={props.localBadge}
+          badgeUrl={props.localBadgeUrl}
         />
       </group>
       {props.remotePlayers
@@ -610,6 +693,7 @@ function World(props: Props) {
               balanceSeconds={player.balanceSeconds}
               onlineSeconds={player.onlineSeconds}
               badge={player.badge}
+              badgeUrl={player.badgeUrl}
             />
           );
         })}
@@ -617,15 +701,47 @@ function World(props: Props) {
   );
 }
 
-export default function NetverseScene(props: Props) {
-  return (
+export default function NetverseScene(props: Omit<Props, 'wallImages' | 'wallTotal' | 'onWallArtClick' | 'orbit'>) {
+  const [wall, setWall] = useState<{ total: number; images: WallArt[] }>({ total: 0, images: [] });
+  const [selectedArt, setSelectedArt] = useState<WallArt | null>(null);
+  const orbit = useRef({ yaw: 0, pitch: 0 });
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const refresh = () => api<{ total: number; images: WallArt[] }>('/api/art/wall').then(setWall).catch(() => {});
+    refresh();
+    const timer = setInterval(refresh, 60000);
+    window.addEventListener('netverse:art-updated', refresh);
+    return () => { clearInterval(timer); window.removeEventListener('netverse:art-updated', refresh); };
+  }, []);
+  useEffect(() => {
+    if (!selectedArt) return;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setSelectedArt(null); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [selectedArt]);
+  return <div className="netverse-canvas" onPointerDown={(event) => {
+      if (!props.cameraEnabled || !(event.target instanceof HTMLCanvasElement)) return;
+      pointer.current = { x: event.clientX, y: event.clientY };
+    }} onPointerMove={(event) => {
+      if (!pointer.current || !event.buttons) return;
+      orbit.current.yaw += (event.clientX - pointer.current.x) * .006;
+      orbit.current.pitch = Math.max(-.35, Math.min(.8, orbit.current.pitch + (event.clientY - pointer.current.y) * .004));
+      pointer.current = { x: event.clientX, y: event.clientY };
+    }} onPointerUp={() => { pointer.current = null; }} onPointerLeave={() => { pointer.current = null; }}>
     <Canvas
       shadows
       dpr={[1, 1.5]}
-      camera={{ position: [0, 2.6, 26.3], fov: 60 }}
+      camera={{ position: [props.startPosition[0], 3.1, props.startPosition[2] + 5.2], fov: 60 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
     >
-      <World {...props} />
+      <World {...props} wallImages={wall.images} wallTotal={wall.total} onWallArtClick={setSelectedArt} orbit={orbit} />
     </Canvas>
-  );
+    {selectedArt && <div className="wall-art-overlay" onClick={(event) => { if (event.target === event.currentTarget) setSelectedArt(null); }}>
+      <section role="dialog" aria-modal="true" aria-label={`Ảnh trên tường máy ${selectedArt.station_id}`}>
+        <button type="button" onClick={() => setSelectedArt(null)} aria-label="Đóng ảnh">×</button>
+        <Image unoptimized src={selectedArt.image_url} alt={selectedArt.title || `Tranh máy ${selectedArt.station_id}`} width={1200} height={900} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        <p>Máy PC #{String(selectedArt.station_id).padStart(3, '0')} · {selectedArt.nickname}</p>
+      </section>
+    </div>}
+  </div>;
 }

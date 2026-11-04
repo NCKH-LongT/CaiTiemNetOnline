@@ -1,0 +1,19 @@
+- tôi muốn user có thể đổi nhân vật cho mình trong list tải về
+- trong album và top tranh tôi muốn tên tranh là ten máy pc số thứ tự
+- có icon chat trong những tên tác giả của những bức tranh
+- trong trình duyệt tôi muốn có sẵn các đường dẫn tắt vào youtube, tiktok, báo vnexpress để làm mặc định đặt logo của mấy trang đó lên danh sách, usẻr bấm vào sẽ vào trang đó xem.
+- user có thể tạo shortcut trang web và icon đại diện là icon của web đó lên.
+- những shortcut được user up lên cũng sẽ có vote thích hoặc ko thích, nếu không thích nhiều quá sẽ bị xóa đi.
+- o menu nhạc nghe chung mặc định ẩn video đi nếu có, và có chỗ chỉnh volumn, mặc định khi vào sẽ autoplay.-> tuy nhiên tôi muốn tất cả máy đều sẽ nghe chung nhạc, và chung 1 thời gian, ví dụ người sau vô thì sẽ nghe từ giây thứ n của nhạc đã phát trước đó.sa
+- cấp nghệ sĩ trong quản lý admin, sẽ có chỗ để up huy hiệu vào, và ở ngoài sẽ có hiển thị huy hiệu đó ở trên đầu, có thể là ảnh gif, png
+- ở upload bảng vàng tôi không thấy nó cập nhật ngoài tab bảng vàng, mà chỉ hiển thị ở trong phòng net.
+- ở world admin chỗ người chơi, khi user vào chơi nó sẽ tính toán thời gian tổng khi bắt đầu online, nếu ngồi máy sẽ tính thời gian đang ngồi máy. có filter để xem những user nào dang vào pc, và có thể lọc theo nickname
+- tên hiển thị trên các bảng tên là Họ Tên không phải là username. ở dưới có @ nickname của họ nhỏ nhỏ
+- tôi muốn có chức năng khi nhấn chuột vào màn hình và di chuyển nó sẽ di chuyển camera theo hướng đó, nhưng vẫn giữ nhân vật làm chủ thể trọng tâm.
+- thêm cho tôi các assets đèn cho sáng, nâng trần cao lên.
+- bỏ tab Bảng điều khiển ngoài giao diện người chơi, để trống trải.
+- thời gian hiển thị trong game này là theo định dạng dd hh:mm:ss (ví dụ 1d 03:12:11) để dễ nhìn.
+- nâng số lượng máy tính lên 500 máy và đặt khoảng cách xa ra từng máy,
+- gắn thêm các đèn để làm sáng khu vực.
+- ở 4 góc tường sẽ có thể dán hình upload lên trên đó, ảnh do tất cả các user upload lên, sẽ đẩy lên random, theo đúng tỉ lệ ảnh gốc, và có thể bấm chuột vô từng tấm để zoom in, và có nút thoát ảnh zoom ra, hoặc bấm bên ngoài.
+- ảnh dính lên tường sẽ có kích thước phụ thuộc vào số lượng ảnh được up lên, nếu càng nhiều ảnh , thì ảnh dán tường sẽ càng nhỏ.

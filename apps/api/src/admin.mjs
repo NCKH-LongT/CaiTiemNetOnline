@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import { adminSession, body, json, storeImage } from './service.mjs';
 import { cookie, hashToken, newToken, setCookie } from './security.mjs';
+import world from '../../../shared/world.json' with { type: 'json' };
 
 const dataDir = process.env.DATA_DIR || '/app/data';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -48,8 +49,8 @@ function validateObject(data) {
     scale = Number(data.scale);
   if (
     ![x, y, z, rotation, scale].every(Number.isFinite) ||
-    Math.abs(x) > 16 ||
-    Math.abs(z) > 32 ||
+    Math.abs(x) > world.width / 2 - 1 ||
+    Math.abs(z) > world.length / 2 - 1 ||
     y < -1 ||
     y > 10 ||
     scale < 0.05 ||
@@ -144,7 +145,7 @@ export async function adminRoutes(pool, redis, request, response, route) {
   const pcDetailMatch = /^\/api\/admin\/pc\/(\d{1,3})$/.exec(route);
   if (pcDetailMatch && method === 'GET') {
     const stationId = Number(pcDetailMatch[1]);
-    if (stationId < 1 || stationId > 200) throw fail('invalid_station');
+    if (stationId < 1 || stationId > world.stations.length) throw fail('invalid_station');
     const [images, top, preview] = await Promise.all([
       pool.query(`SELECT a.id,a.title,a.image_url,p.nickname FROM art_images a JOIN players p ON p.id=a.player_id
         WHERE a.station_id=$1 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 20`, [stationId]),
@@ -168,7 +169,10 @@ export async function adminRoutes(pool, redis, request, response, route) {
     const players = playersResult.rows.map((player, index) => {
       let live = null;
       try { live = liveValues[index] ? JSON.parse(liveValues[index]) : null; } catch { /* expired state */ }
-      return { ...player, live };
+      return { ...player, live: live ? { ...live,
+        onlineSeconds: live.onlineSeconds + Math.max(0, Math.floor((Date.now() - live.lastOnlineAt) / 1000)),
+        seatedSeconds: live.seatedSince ? Math.max(0, Math.floor((Date.now() - live.seatedSince) / 1000)) : 0,
+      } : null };
     });
     const states = new Map(pcResult.rows.map((pc) => [pc.station_id, pc]));
     const occupied = new Map(players.filter((player) => player.live?.seatedAt).map((player) => [player.live.seatedAt, player]));
@@ -177,7 +181,7 @@ export async function adminRoutes(pool, redis, request, response, route) {
     const desktops = new Map([...occupied.keys()].map((id, index) => {
       try { return [id, desktopValues[index] ? JSON.parse(desktopValues[index]) : null]; } catch { return [id, null]; }
     }));
-    const pcs = Array.from({ length: 200 }, (_, index) => {
+    const pcs = Array.from({ length: world.stations.length }, (_, index) => {
       const stationId = index + 1;
       const occupant = occupied.get(stationId);
       return { stationId, ...(states.get(stationId) || {}), userId: occupant?.id || null,
@@ -190,12 +194,26 @@ export async function adminRoutes(pool, redis, request, response, route) {
     return json(response, 200, { tracks: result.rows });
   }
   if (route === '/api/admin/music' && method === 'POST') {
-    const data = await body(request);
+    const data = await body(request, 12_000_000);
     const title = String(data.title || '').trim().slice(0, 100);
     if (!title) throw fail('invalid_music');
-    const fileUrl = youtubeUrl(data.youtubeUrl);
+    let fileUrl;
+    if (data.audio) {
+      const match = /^data:audio\/(?:mpeg|mp3);base64,([A-Za-z0-9+/=]+)$/.exec(String(data.audio));
+      if (!match) throw fail('invalid_audio');
+      const buffer = Buffer.from(match[1], 'base64');
+      if (!buffer.length || buffer.length > 8_000_000 ||
+        !(buffer.toString('ascii', 0, 3) === 'ID3' || (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0)))
+        throw fail('invalid_audio');
+      const filename = `music-${randomUUID()}.mp3`;
+      await mkdir(dataDir, { recursive: true });
+      await writeFile(path.join(dataDir, filename), buffer, { flag: 'wx' });
+      fileUrl = `/api/media/${filename}`;
+    } else fileUrl = youtubeUrl(data.youtubeUrl);
     const id = randomUUID();
-    const result = await pool.query('INSERT INTO music_tracks (id,title,file_url) VALUES ($1,$2,$3) RETURNING *', [id, title, fileUrl]);
+    let result;
+    try { result = await pool.query('INSERT INTO music_tracks (id,title,file_url) VALUES ($1,$2,$3) RETURNING *', [id, title, fileUrl]); }
+    catch (cause) { if (fileUrl.startsWith('/api/media/')) await unlink(path.join(dataDir, path.basename(fileUrl))).catch(() => {}); throw cause; }
     await pool.query('UPDATE music_state SET track_id=$1,started_at=now() WHERE id=1', [id]);
     return json(response, 201, { track: result.rows[0] });
   }
@@ -363,6 +381,11 @@ export async function adminRoutes(pool, redis, request, response, route) {
     const result = await pool.query('SELECT * FROM artist_levels ORDER BY level');
     return json(response, 200, { levels: result.rows });
   }
+  if (route === '/api/admin/levels/badge' && method === 'POST') {
+    const data = await body(request, 3_000_000);
+    const badgeUrl = await storeImage(data.image, 'badge');
+    return json(response, 201, { badgeUrl });
+  }
   if (route === '/api/admin/levels' && method === 'POST') {
     const data = await body(request);
     if (!Array.isArray(data.levels) || data.levels.length < 1 || data.levels.length > 10)
@@ -396,11 +419,14 @@ export async function adminRoutes(pool, redis, request, response, route) {
           !String(item.name || '').trim()
         )
           throw fail('invalid_levels');
-        await client.query('INSERT INTO artist_levels VALUES ($1,$2,$3,$4)', [
+        if (item.badge_url && !/^\/api\/media\/badge-[0-9a-f-]+\.(png|gif)$/.test(item.badge_url))
+          throw fail('invalid_badge');
+        await client.query('INSERT INTO artist_levels (level,name,min_uploads,min_likes,badge_url) VALUES ($1,$2,$3,$4,$5)', [
           item.level,
           String(item.name).slice(0, 60),
           item.min_uploads,
           item.min_likes,
+          item.badge_url || null,
         ]);
       }
       await client.query('COMMIT');
@@ -435,7 +461,7 @@ export async function adminRoutes(pool, redis, request, response, route) {
             {
               parts: [
                 {
-                  text: `Sắp xếp tối đa 12 vật thể cho quán net 200 máy, tọa độ x từ -16 đến 16, z từ -32 đến 32, tránh đè lên dãy máy tại x gần -13.8,-10.2,-7.8,-4.2,-1.8,1.8,4.2,7.8,10.2,13.8 và z -20 đến 20. Danh sách asset: ${JSON.stringify(assets.rows)}. Yêu cầu: ${prompt}. Chỉ dùng assetId có trong danh sách.`,
+                  text: `Sắp xếp tối đa 12 vật thể cho quán net ${world.stations.length} máy, tọa độ x từ ${-world.width / 2 + 1} đến ${world.width / 2 - 1}, z từ ${-world.length / 2 + 1} đến ${world.length / 2 - 1}. Tránh đè lên các dãy máy. Danh sách asset: ${JSON.stringify(assets.rows)}. Yêu cầu: ${prompt}. Chỉ dùng assetId có trong danh sách.`,
                 },
               ],
             },

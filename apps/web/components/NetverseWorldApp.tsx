@@ -10,6 +10,8 @@ import { api, readImage, type ArtImage, type Player } from '@/lib/api';
 import { loadChatMessages, saveChatMessage, type LocalChatMessage } from '@/lib/local-chat';
 import { compressChatImage } from '@/lib/chat-image';
 import { characters } from '@/lib/characters';
+import { formatDuration } from '@/lib/time';
+import { entranceZ } from '@/lib/stations';
 import { nearestStation, spawn, stations, type Point3 } from '@/lib/stations';
 
 type ChatMessage = LocalChatMessage;
@@ -20,7 +22,7 @@ type Leaderboard = {
   art: ArtImage[];
   board?: { background_url: string | null; background_color: string };
 };
-const formatMinutes = (seconds: number) => `${Math.floor(seconds / 60)} phút`;
+const formatMinutes = formatDuration;
 
 export default function NetverseWorldApp() {
   const [player, setPlayer] = useState<Player | null>(null);
@@ -55,7 +57,7 @@ export default function NetverseWorldApp() {
   const [artist, setArtist] = useState<{
     uploads: number;
     likes: number;
-    level: { name: string } | null;
+    level: { name: string; badge_url: string | null } | null;
   } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState('');
@@ -84,7 +86,7 @@ export default function NetverseWorldApp() {
           setOnlineSeconds(found.online_seconds);
           try { setReadAt(JSON.parse(localStorage.getItem(`netverse-chat-read:${found.id}`) || '{}')); }
           catch { setReadAt({}); }
-          position.current = found.balance_seconds > 0 ? [found.x, 0, found.z] : [0, 0, 29];
+          position.current = found.balance_seconds > 0 ? [found.x, 0, found.z] : [0, 0, entranceZ + 3];
           setSceneStart([...position.current]);
           setEntered(true);
           loadChatMessages(found.id)
@@ -129,7 +131,7 @@ export default function NetverseWorldApp() {
   useEffect(() => {
     if (!entered) return;
     const refresh = () =>
-      api<{ uploads: number; likes: number; level: { name: string } | null }>('/api/player/artist')
+      api<{ uploads: number; likes: number; level: { name: string; badge_url: string | null } | null }>('/api/player/artist')
         .then(setArtist)
         .catch(() => {});
     refresh();
@@ -142,7 +144,7 @@ export default function NetverseWorldApp() {
     position.current = [
       player.balance_seconds > 0 ? player.x : 0,
       0,
-      player.balance_seconds > 0 ? player.z : 29,
+      player.balance_seconds > 0 ? player.z : entranceZ + 3,
     ];
     setSceneStart([...position.current]);
     setSceneKey((current) => current + 1);
@@ -476,6 +478,7 @@ export default function NetverseWorldApp() {
           localBalanceSeconds={seconds}
           localOnlineSeconds={onlineSeconds}
           localBadge={artist?.level?.name}
+          localBadgeUrl={artist?.level?.badge_url}
           leaderboard={leaderboard}
           onNearbyChange={setNearbyId}
           onPositionChange={(x, z) => {
@@ -554,7 +557,7 @@ export default function NetverseWorldApp() {
             </div>
             <div className="stat-row">
               <span>Đã online</span>
-              <b>{Math.floor(onlineSeconds / 3600)}h {Math.floor(onlineSeconds % 3600 / 60)}p</b>
+              <b>{formatDuration(onlineSeconds)}</b>
             </div>
             <div className="stat-row">
               <span>Máy đang dùng</span>
@@ -575,35 +578,12 @@ export default function NetverseWorldApp() {
                 setProfileOpen(true);
               }}
             >
-              PROFILE
+              ĐỔI NHÂN VẬT / PROFILE
             </button>
             <button className="hud-action" onClick={logout}>
               ĐĂNG XUẤT
             </button>
           </aside>
-          {mainTab === 'world' && !seatedAt && (
-            <div className="controls">
-              <span className="eyebrow">ĐIỀU KHIỂN</span>
-              <div>
-                <kbd>W</kbd>
-                <kbd>A</kbd>
-                <kbd>S</kbd>
-                <kbd>D</kbd>
-                <span>Di chuyển</span>
-              </div>
-              <div>
-                <kbd>SHIFT</kbd>
-                <span>Chạy</span>
-              </div>
-              <div>
-                <kbd>A</kbd><span>Trái</span><kbd>D</kbd><span>Phải · camera theo nhân vật</span>
-              </div>
-              <div>
-                <kbd>E</kbd>
-                <span>Ngồi / đứng</span>
-              </div>
-            </div>
-          )}
           {nearbyId && !seatedAt && seconds > 0 && mainTab === 'world' && (
             <button className="interaction" onClick={() => sit(nearbyId)}>
               <kbd>E</kbd>
@@ -640,7 +620,8 @@ export default function NetverseWorldApp() {
               }}
               onAlbumChange={() => {
                 room.current?.send('profile-refresh');
-                api<{ uploads: number; likes: number; level: { name: string } | null }>('/api/player/artist')
+                window.dispatchEvent(new Event('netverse:art-updated'));
+                api<{ uploads: number; likes: number; level: { name: string; badge_url: string | null } | null }>('/api/player/artist')
                   .then(setArtist)
                   .catch(() => {});
               }}
@@ -743,7 +724,7 @@ export default function NetverseWorldApp() {
             </section>
           )}
           {mainTab === 'rankings' && (
-            <section className="ranking-panel">
+            <section className="ranking-panel" style={{ backgroundColor: leaderboard.board?.background_color || '#231c3c', backgroundImage: leaderboard.board?.background_url ? `linear-gradient(#100e20b0,#100e20df),url(${leaderboard.board.background_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
               <h2>Bảng vàng phòng net</h2>
               <div>
                 <article>
@@ -802,12 +783,10 @@ export default function NetverseWorldApp() {
                     }
                   />
                 </label>
-                <label>
-                  Nhân vật 3D
-                  <select value={profileCharacter} onChange={(event) => setProfileCharacter(event.target.value)}>
-                    {characters.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                  </select>
-                </label>
+                <fieldset className="character-picker">
+                  <legend>Nhân vật đã tải · chọn để đổi</legend>
+                  <div>{characters.map((item) => <button key={item.id} type="button" className={profileCharacter === item.id ? 'selected' : ''} onClick={() => setProfileCharacter(item.id)} aria-pressed={profileCharacter === item.id}>{item.name}</button>)}</div>
+                </fieldset>
                 <div>
                   <button onClick={() => setProfileOpen(false)}>HỦY</button>
                   <button onClick={saveProfile}>LƯU</button>
@@ -823,7 +802,7 @@ export default function NetverseWorldApp() {
             <h1>
               Một quán net.
               <br />
-              <em>200 máy, nhiều kết nối.</em>
+              <em>{stations.length} máy, nhiều kết nối.</em>
             </h1>
             {!authReady ? (
               <p>Đang tải tài khoản...</p>

@@ -58,34 +58,35 @@ test('two clients cannot occupy one station; leaving frees it', { timeout: 15000
     b.send('sync');
     await waitFor(() => snapshotA?.players.length === 2 && snapshotB?.players.length === 2);
 
-    const first = world.stations[119];
-    const second = world.stations[117];
-    // Move both players close to station 120 in small, valid increments.
-    for (let step = 1; step <= 8; step += 1) {
-      const x = first.seatX * step / 8;
-      const z = world.spawn[2] + (first.z - world.spawn[2]) * step / 8;
+    const first = world.stations[249];
+    const second = world.stations[247];
+    // Move both players close to a station near the entrance in valid increments.
+    await delay(120);
+    for (let step = 1; step <= 12; step += 1) {
+      const x = first.seatX * step / 12;
+      const z = world.spawn[2] + (first.z - world.spawn[2]) * step / 12;
       a.send('move', { x, z });
       b.send('move', { x, z });
       await delay(100);
     }
     await waitFor(() => snapshotA?.players.length === 2);
-    a.send('sit', { stationId: 120 });
-    await waitFor(() => snapshotA?.seats[120] === a.sessionId);
-    b.send('sit', { stationId: 120 });
+    a.send('sit', { stationId: first.id });
+    await waitFor(() => snapshotA?.seats[first.id] === a.sessionId);
+    b.send('sit', { stationId: first.id });
     await waitFor(() => rejected);
-    assert.equal(snapshotB.seats[120], a.sessionId);
+    assert.equal(snapshotB.seats[first.id], a.sessionId);
     a.send('stand');
-    await waitFor(() => !snapshotB?.seats[120]);
+    await waitFor(() => !snapshotB?.seats[first.id]);
     assert.equal(standPosition.x, first.seatX);
     assert.equal(standPosition.z, first.z);
-    b.send('sit', { stationId: 120 });
-    await waitFor(() => snapshotB?.seats[120] === b.sessionId);
+    b.send('sit', { stationId: first.id });
+    await waitFor(() => snapshotB?.seats[first.id] === b.sessionId);
     for (let step = 1; step <= 8; step += 1) {
       a.send('move', { x: first.seatX + (second.seatX - first.seatX) * step / 8, z: first.z + (second.z - first.z) * step / 8 });
       await delay(100);
     }
-    a.send('sit', { stationId: 118 });
-    await waitFor(() => snapshotA?.seats[118] === a.sessionId);
+    a.send('sit', { stationId: second.id });
+    await waitFor(() => snapshotA?.seats[second.id] === a.sessionId);
   } finally {
     await Promise.allSettled([a?.leave(), b?.leave()]);
     server.kill('SIGTERM');

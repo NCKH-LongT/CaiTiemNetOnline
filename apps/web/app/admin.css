@@ -85,6 +85,8 @@
 }
 .admin-music form, .admin-music-list { display: grid; gap: 8px; }
 .admin-music form { grid-template-columns: minmax(120px, 1fr) minmax(160px, 1fr) auto; margin: 12px 0; }
+.admin-music form { grid-template-columns: minmax(120px, 1fr) minmax(160px, 1fr) minmax(110px, 1fr) auto; }
+.admin-music input[type='file'] { max-width: 180px; font-size: 10px; }
 .admin-music-list { margin-bottom: 12px; max-height: 230px; overflow: auto; }
 .admin-music-list > div { display: flex; align-items: center; gap: 8px; padding: 7px; border: 1px solid #a08cce50; border-radius: 6px; }
 .admin-music-list strong { flex: 1; overflow: hidden; text-overflow: ellipsis; }
@@ -186,6 +188,9 @@
 .object-asset-select select { display: block; width: 100%; margin-top: 4px; padding: 7px; border-radius: 6px; background: #302c49; color: #fff; }
 .admin-overview { min-height: 360px; }
 .admin-player-list { max-height: 380px; overflow: auto; display: grid; gap: 6px; }
+.admin-player-filters { display: flex; gap: 8px; margin: 10px 0; }
+.admin-player-filters input { flex: 1; min-width: 0; }
+.admin-player-filters select { max-width: 140px; }
 .admin-player-list button { display: grid; grid-template-columns: 32px minmax(100px,1fr) auto; gap: 6px 9px; align-items: center; text-align: left; color: #eee; background: #ffffff0d; }
 .admin-player-list button img, .admin-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
 .admin-avatar { display: grid; place-items: center; background: #7763ae; }
@@ -271,15 +276,18 @@
   gap: 7px;
 }
 .level-list > div {
-  display: grid;
-  grid-template-columns: 25px 1fr 70px 70px;
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
 }
-.level-list input {
+.level-list > div > input {
   min-width: 0;
-  width: 100%;
+  flex: 1 1 100px;
 }
+.level-list > div > input[type='number'] { flex: 0 0 70px; width: 70px; }
+.admin-badge-upload { padding: 6px; border: 1px solid #a28be155; border-radius: 5px; font-size: 9px; cursor: pointer; }
+.admin-badge-upload input { display: none; }
 @media (max-width: 850px) {
   .admin-shell {
     padding: 16px;

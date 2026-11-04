@@ -23,14 +23,14 @@ CREATE TABLE IF NOT EXISTS player_sessions (
   expires_at timestamptz NOT NULL
 );
 CREATE TABLE IF NOT EXISTS pc_states (
-  station_id integer PRIMARY KEY CHECK (station_id BETWEEN 1 AND 200),
+  station_id integer PRIMARY KEY CHECK (station_id BETWEEN 1 AND 500),
   wallpaper_url text,
   browser_url text,
   updated_by uuid REFERENCES players(id) ON DELETE SET NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS pc_visitors (
-  station_id integer NOT NULL CHECK (station_id BETWEEN 1 AND 200),
+  station_id integer NOT NULL CHECK (station_id BETWEEN 1 AND 500),
   player_id uuid NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   visited_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (station_id, player_id)
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS pc_visitors (
 ALTER TABLE pc_visitors ADD COLUMN IF NOT EXISTS visited_at timestamptz NOT NULL DEFAULT now();
 CREATE TABLE IF NOT EXISTS art_images (
   id uuid PRIMARY KEY,
-  station_id integer NOT NULL CHECK (station_id BETWEEN 1 AND 200),
+  station_id integer NOT NULL CHECK (station_id BETWEEN 1 AND 500),
   player_id uuid NOT NULL REFERENCES players(id),
   image_url text NOT NULL,
   title text NOT NULL DEFAULT '',
@@ -53,6 +53,28 @@ CREATE TABLE IF NOT EXISTS art_votes (
 );
 CREATE INDEX IF NOT EXISTS art_images_station_date ON art_images (station_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS art_votes_image_vote ON art_votes (image_id, vote);
+ALTER TABLE pc_states DROP CONSTRAINT IF EXISTS pc_states_station_id_check;
+ALTER TABLE pc_states ADD CONSTRAINT pc_states_station_id_check CHECK (station_id BETWEEN 1 AND 500);
+ALTER TABLE pc_visitors DROP CONSTRAINT IF EXISTS pc_visitors_station_id_check;
+ALTER TABLE pc_visitors ADD CONSTRAINT pc_visitors_station_id_check CHECK (station_id BETWEEN 1 AND 500);
+ALTER TABLE art_images DROP CONSTRAINT IF EXISTS art_images_station_id_check;
+ALTER TABLE art_images ADD CONSTRAINT art_images_station_id_check CHECK (station_id BETWEEN 1 AND 500);
+CREATE TABLE IF NOT EXISTS web_shortcuts (
+  id uuid PRIMARY KEY,
+  player_id uuid NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  url text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+CREATE TABLE IF NOT EXISTS web_shortcut_votes (
+  shortcut_id uuid NOT NULL REFERENCES web_shortcuts(id) ON DELETE CASCADE,
+  player_id uuid NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  vote smallint NOT NULL CHECK (vote IN (-1, 1)),
+  PRIMARY KEY (shortcut_id, player_id)
+);
+CREATE INDEX IF NOT EXISTS web_shortcuts_active ON web_shortcuts (created_at DESC) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS web_shortcuts_active_url ON web_shortcuts (url) WHERE deleted_at IS NULL;
 CREATE TABLE IF NOT EXISTS gift_log (
   id uuid PRIMARY KEY,
   sender_id uuid NOT NULL REFERENCES players(id),
@@ -100,8 +122,10 @@ CREATE TABLE IF NOT EXISTS artist_levels (
   level integer PRIMARY KEY,
   name text NOT NULL,
   min_uploads integer NOT NULL,
-  min_likes integer NOT NULL
+  min_likes integer NOT NULL,
+  badge_url text
 );
+ALTER TABLE artist_levels ADD COLUMN IF NOT EXISTS badge_url text;
 CREATE TABLE IF NOT EXISTS board_settings (
   id integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   background_url text,

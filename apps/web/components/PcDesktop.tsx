@@ -6,8 +6,15 @@ import Image from 'next/image';
 import { api, type ArtImage, type PublicProfile } from '@/lib/api';
 import { compressDesktopImage } from '@/lib/desktop-image';
 import { embeddableUrl } from '@/lib/embed-url';
+import { formatDuration } from '@/lib/time';
 
 type State = { wallpaper_url?: string; browser_url?: string };
+type Shortcut = { id: string; title: string; url: string; player_id: string; nickname: string; likes: number; dislikes: number; my_vote: number | null };
+const presetShortcuts = [
+  { title: 'YouTube', url: 'https://www.youtube.com/', icon: 'https://www.youtube.com/favicon.ico' },
+  { title: 'TikTok', url: 'https://www.tiktok.com/', icon: 'https://www.tiktok.com/favicon.ico' },
+  { title: 'VnExpress', url: 'https://vnexpress.net/', icon: 'https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64' },
+];
 type Props = {
   stationId: number;
   seconds: number;
@@ -18,18 +25,16 @@ type Props = {
   onPrivateChat: (userId: string) => void;
   onStand: () => void;
 };
-const formatTime = (seconds: number) =>
-  `${Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, '0')}:${Math.floor(seconds % 60)
-    .toString()
-    .padStart(2, '0')}`;
+const formatTime = formatDuration;
 export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers, onAlbumChange, onViewChange, onPrivateChat, onStand }: Props) {
   const [tab, setTab] = useState<'desktop' | 'browser' | 'album' | 'top'>('desktop');
   const [state, setState] = useState<State>({});
   const [images, setImages] = useState<ArtImage[]>([]);
   const [top, setTop] = useState<ArtImage[]>([]);
   const [url, setUrl] = useState('https://www.wikipedia.org');
+  const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
+  const [shortcutTitle, setShortcutTitle] = useState('');
+  const [shortcutUrl, setShortcutUrl] = useState('');
   const [title, setTitle] = useState('');
   const [drawing, setDrawing] = useState(false);
   const [notice, setNotice] = useState('');
@@ -78,6 +83,15 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
       api<{ art: ArtImage[] }>('/api/leaderboard')
         .then((result) => setTop(result.art))
         .catch(() => {});
+  }, [tab]);
+  const refreshShortcuts = () => api<{ shortcuts: Shortcut[] }>('/api/shortcuts')
+    .then((result) => setShortcuts(result.shortcuts))
+    .catch(() => setNotice('Không tải được shortcut.'));
+  useEffect(() => {
+    if (tab !== 'browser') return;
+    void refreshShortcuts();
+    const timer = setInterval(refreshShortcuts, 10000);
+    return () => clearInterval(timer);
   }, [tab]);
   useEffect(() => {
     if (!drawing || !canvas.current) return;
@@ -164,6 +178,30 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
       setNotice((error as Error).message);
     }
   };
+  const openShortcut = async (destination: string) => {
+    window.open(destination, '_blank', 'noopener,noreferrer');
+    try {
+      const embedded = embeddableUrl(destination);
+      await api(`/api/pc/${stationId}`, { browserUrl: embedded });
+      setState((current) => ({ ...current, browser_url: embedded }));
+      setUrl(destination);
+    } catch (cause) { setNotice((cause as Error).message); }
+  };
+  const createShortcut = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      await api('/api/shortcuts', { title: shortcutTitle, url: shortcutUrl });
+      setShortcutTitle('');
+      setShortcutUrl('');
+      await refreshShortcuts();
+    } catch (cause) { setNotice((cause as Error).message); }
+  };
+  const voteShortcut = async (id: string, vote: number) => {
+    try {
+      await api('/api/shortcuts/vote', { shortcutId: id, vote });
+      await refreshShortcuts();
+    } catch (cause) { setNotice((cause as Error).message); }
+  };
   const draw = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const target = event.currentTarget;
     const bounds = target.getBoundingClientRect();
@@ -211,13 +249,14 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
             <span>XEM ẢNH ⤢</span>
           </button>
           <div>
-            <strong>{image.title || 'Không tên'}</strong>
+            <strong>Máy PC #{String(image.station_id).padStart(3, '0')}</strong>
             <button className="gallery-author" onClick={() => showProfile(image.player_id)} aria-label={`Xem profile của ${image.nickname}`}>
               {image.avatar_url && (
                 <Image unoptimized src={image.avatar_url} alt="" width={18} height={18} />
               )}
               <span>{image.nickname}</span>
             </button>
+            {image.player_id !== viewerId && <button className="gallery-chat" onClick={() => onPrivateChat(image.player_id)} disabled={!onlinePlayers.some((item) => item.userId === image.player_id)} aria-label={`Chat với ${image.nickname}`} title={onlinePlayers.some((item) => item.userId === image.player_id) ? 'Chat riêng' : 'Tác giả đang offline'}>✉</button>}
             <small>{image.likes} lượt thích</small>
           </div>
           <div className="vote-actions">
@@ -305,6 +344,29 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
       )}
       {tab === 'browser' && (
         <div className="browser-view">
+          <div className="browser-shortcuts">
+            <h3>Truy cập nhanh</h3>
+            <div className="shortcut-grid">
+              {presetShortcuts.map((shortcut) => <button key={shortcut.title} type="button" onClick={() => openShortcut(shortcut.url)}>
+                <Image unoptimized src={shortcut.icon} alt="" width={24} height={24} />{shortcut.title}
+              </button>)}
+            </div>
+            {shortcuts.length > 0 && <><h3>Shortcut cộng đồng</h3><div className="shortcut-list">
+              {shortcuts.map((shortcut) => <div className="shortcut-item" key={shortcut.id}>
+                <button type="button" onClick={() => openShortcut(shortcut.url)} title={shortcut.url}>
+                  <Image unoptimized src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(shortcut.url).hostname)}&sz=64`} alt="" width={22} height={22} />
+                  <span>{shortcut.title}<small>#{shortcut.nickname}</small></span>
+                </button>
+                <button type="button" disabled={shortcut.player_id === viewerId} className={shortcut.my_vote === 1 ? 'selected' : ''} onClick={() => voteShortcut(shortcut.id, 1)} aria-label={`Thích ${shortcut.title}`}>♥ {shortcut.likes}</button>
+                <button type="button" disabled={shortcut.player_id === viewerId} className={shortcut.my_vote === -1 ? 'selected' : ''} onClick={() => voteShortcut(shortcut.id, -1)} aria-label={`Không thích ${shortcut.title}`}>× {shortcut.dislikes}</button>
+              </div>)}
+            </div><small>Shortcut sẽ ẩn khi có ít nhất 5 lượt không thích và số này gấp hơn hai lần lượt thích.</small></>}
+            <form onSubmit={createShortcut} className="shortcut-create">
+              <input aria-label="Tên shortcut" placeholder="Tên trang" value={shortcutTitle} maxLength={60} onChange={(event) => setShortcutTitle(event.target.value)} required />
+              <input aria-label="Địa chỉ shortcut HTTPS" placeholder="https://..." value={shortcutUrl} onChange={(event) => setShortcutUrl(event.target.value)} required />
+              <button>+ THÊM</button>
+            </form>
+          </div>
           <form onSubmit={navigate}>
             <input
               aria-label="Địa chỉ HTTPS"
@@ -314,8 +376,8 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
             <button>Đi</button>
           </form>
           <p>
-            Dán link video YouTube/TikTok để phát trong PC. Báo điện tử chỉ hiện nếu trang cho phép
-            nhúng. Nếu màn hình trống hoặc báo chặn, dùng nút Mở ngoài.
+            Shortcut mở trang ở tab mới và lưu link vào PC. Video YouTube/TikTok có thể phát trong PC;
+            báo điện tử chỉ hiện nếu trang cho phép nhúng. Nếu màn hình trống, dùng nút Mở ngoài.
           </p>
           {state.browser_url && (
             <a className="browser-external" href={state.browser_url} target="_blank" rel="noopener noreferrer">
@@ -399,13 +461,14 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
             </div>
             <div className="art-lightbox-info">
               <div>
-                <strong>{selectedImage.title || 'Không tên'}</strong>
+                <strong>Máy PC #{String(selectedImage.station_id).padStart(3, '0')}</strong>
                 <small>Máy #{String(selectedImage.station_id).padStart(3, '0')} · {selectedImage.likes} lượt thích</small>
               </div>
               <button className="gallery-author" onClick={() => showProfile(selectedImage.player_id)} aria-label={`Xem profile của ${selectedImage.nickname}`}>
                 {selectedImage.avatar_url && <Image unoptimized src={selectedImage.avatar_url} alt="" width={26} height={26} />}
                 <span>{selectedImage.nickname} ↗</span>
               </button>
+              {selectedImage.player_id !== viewerId && <button className="gallery-chat" onClick={() => onPrivateChat(selectedImage.player_id)} disabled={!onlinePlayers.some((item) => item.userId === selectedImage.player_id)} aria-label={`Chat với ${selectedImage.nickname}`}>✉</button>}
             </div>
           </section>
         </div>,
@@ -426,13 +489,14 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
                   <div>
                     <h2>{profile.nickname}</h2>
                     <p>{profile.fullname}</p>
+                    {profile.badge_url && <Image unoptimized src={profile.badge_url} alt={`Huy hiệu ${profile.badge || ''}`} width={40} height={40} />}
                     {profile.badge && profile.badge !== 'Tân binh' && <span className="art-badge">✦ {profile.badge}</span>}
                   </div>
                 </div>
                 <div className="art-profile-stats">
                   <span><b>{profile.uploads}</b> tranh hiện có</span>
                   <span><b>{profile.likes}</b> lượt thích</span>
-                  <span><b>{Math.floor(profile.online_seconds / 3600)}h {Math.floor(profile.online_seconds % 3600 / 60)}p</b> online</span>
+                  <span><b>{formatDuration(profile.online_seconds)}</b> online</span>
                 </div>
                 <p className="art-profile-since">Tham gia từ {new Date(profile.created_at).toLocaleDateString('vi-VN')}</p>
                 {profile.id === viewerId ? (
