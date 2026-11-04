@@ -17,8 +17,9 @@ pipeline {
       steps {
         checkout scm
         script {
+          env.DEPLOY_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
           env.DEPLOY_MAIN = sh(
-            script: 'test "$(git rev-parse HEAD)" = "$(git rev-parse refs/remotes/origin/main 2>/dev/null)" && echo true || echo false',
+            script: 'test "$DEPLOY_COMMIT" = "$(git rev-parse refs/remotes/origin/main 2>/dev/null)" && echo true || echo false',
             returnStdout: true
           ).trim()
         }
@@ -60,14 +61,14 @@ pipeline {
         withCredentials([file(credentialsId: 'netverse-prod-env', variable: 'DEPLOY_ENV')]) {
           sh '''
             set -eu
-            release="$DEPLOY_ROOT/releases/$GIT_COMMIT"
+            release="$DEPLOY_ROOT/releases/$DEPLOY_COMMIT"
             mkdir -p "$release"
             tar -C "$WORKSPACE" --exclude='./.git' --exclude='./node_modules' \
               --exclude='./apps/web/.next' --exclude='./.env' --exclude='./.env.*' \
               --exclude='./infra/jenkins/agent.env' \
               -cf - . | tar -C "$release" -xf -
             cd "$release"
-            export IMAGE_TAG="$GIT_COMMIT"
+            export IMAGE_TAG="$DEPLOY_COMMIT"
             docker compose --env-file "$DEPLOY_ENV" config --quiet
             previous_container="$(docker compose --env-file "$DEPLOY_ENV" ps -q web || true)"
             previous_tag=""
