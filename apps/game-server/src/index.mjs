@@ -105,7 +105,7 @@ export class CafeRoom extends Room {
       if (redis)
         for (const player of this.players.values())
           if (player.userId)
-            redis.set(`netverse:online:${player.userId}`, JSON.stringify(this.presence(player)), { EX: 20 })
+            redis.set(`netverse:online:${player.userId}`, JSON.stringify(this.playerPresence(player)), { EX: 20 })
               .catch((error) => console.error('Presence:', error));
       for (const player of this.players.values())
         if (player.seatedAt) this.charge(player).catch((error) => console.error('Timer:', error));
@@ -213,7 +213,7 @@ export class CafeRoom extends Room {
       client.send('seat', { stationId });
       client.send('time', { seconds: player.balanceSeconds });
       if (redis && player.userId)
-        await redis.set(`netverse:online:${player.userId}`, JSON.stringify(this.presence(player)), { EX: 20 });
+        await redis.set(`netverse:online:${player.userId}`, JSON.stringify(this.playerPresence(player)), { EX: 20 });
       this.sendSnapshot();
     });
     this.onMessage('stand', async (client) => {
@@ -232,7 +232,7 @@ export class CafeRoom extends Room {
       if (redis && player.userId) {
         await redis.del(`netverse:desktop:${previousStation}`);
         await redis.del(`netverse:desktop-preview:${previousStation}`);
-        await redis.set(`netverse:online:${player.userId}`, JSON.stringify(this.presence(player)), { EX: 20 });
+        await redis.set(`netverse:online:${player.userId}`, JSON.stringify(this.playerPresence(player)), { EX: 20 });
       }
       client.send('seat', { stationId: null, x: player.x, z: player.z });
       this.sendSnapshot();
@@ -345,7 +345,7 @@ export class CafeRoom extends Room {
       lastMove: Date.now(),
     });
     if (redis && auth?.id)
-      redis.set(`netverse:online:${auth.id}`, JSON.stringify(this.presence(this.players.get(client.sessionId))), { EX: 20 }).catch(() => {});
+      redis.set(`netverse:online:${auth.id}`, JSON.stringify(this.playerPresence(this.players.get(client.sessionId))), { EX: 20 }).catch(() => {});
     this.broadcast('snapshot', this.snapshot(), { except: client });
   }
 
@@ -370,7 +370,7 @@ export class CafeRoom extends Room {
     this.broadcast('snapshot', this.snapshot());
   }
 
-  presence(player) {
+  playerPresence(player) {
     return { sessionId: player.id, seatedAt: player.seatedAt, seatedSince: player.seatedSince,
       onlineSeconds: player.onlineSeconds, lastOnlineAt: player.lastOnlineAt };
   }

@@ -156,8 +156,11 @@ export default function NetverseWorldApp() {
     let cancelled = false;
     let joined: Room | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
+    let positionSynced = false;
     (async () => {
       const { ticket } = await api<{ ticket: string }>('/api/auth/ticket');
+      if (cancelled) return;
+      setConnection('connecting');
       const endpoint =
         process.env.NEXT_PUBLIC_GAME_URL ||
         (location.port === '3000' ? 'http://localhost:2567' : `${location.origin}/socket`);
@@ -171,6 +174,19 @@ export default function NetverseWorldApp() {
       setSessionId(joined.sessionId);
       setConnection('online');
       joined.onMessage('snapshot', (snapshot: Snapshot) => {
+        if (!positionSynced) {
+          const self = snapshot.players.find((item) => item.id === joined?.sessionId);
+          if (self) {
+            positionSynced = true;
+            if (typeof self.balanceSeconds === 'number') setSeconds(self.balanceSeconds);
+            if (typeof self.onlineSeconds === 'number') setOnlineSeconds(self.onlineSeconds);
+            if (Math.hypot(position.current[0] - self.x, position.current[2] - self.z) > 0.05) {
+              position.current = [self.x, 0, self.z];
+              setSceneStart([self.x, 0, self.z]);
+              setSceneKey((current) => current + 1);
+            }
+          }
+        }
         setPlayers(snapshot.players);
         setSeats(snapshot.seats);
       });
@@ -254,6 +270,10 @@ export default function NetverseWorldApp() {
 
   const sit = useCallback(
     (stationId: number) => {
+      if (!room.current) {
+        setNotice('Đang kết nối lại game server. Hãy thử lại sau vài giây.');
+        return;
+      }
       if (seconds <= 0) {
         setNotice('Bạn đã hết giờ. Hãy xin thêm phút ở ngoài quán.');
         return;
@@ -266,8 +286,8 @@ export default function NetverseWorldApp() {
         setNotice('Máy đang có người sử dụng.');
         return;
       }
-      room.current?.send('move', { x: position.current[0], z: position.current[2] });
-      room.current?.send('sit', { stationId });
+      room.current.send('move', { x: position.current[0], z: position.current[2] });
+      room.current.send('sit', { stationId });
     },
     [seconds, seats, sessionId],
   );
