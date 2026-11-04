@@ -1,5 +1,5 @@
 pipeline {
-  agent any
+  agent { label 'netverse-docker' }
   options {
     skipDefaultCheckout(true)
     timestamps()
@@ -124,6 +124,14 @@ pipeline {
     }
   }
   post {
-    always { deleteDir() }
+    always {
+      script {
+        try {
+          deleteDir()
+        } catch (org.jenkinsci.plugins.workflow.steps.MissingContextVariableException ignored) {
+          echo 'Skipping workspace cleanup: no agent workspace was allocated.'
+        }
+      }
+    }
   }
 }
