@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './world.css';
+import './admin.css';
 
 export const metadata: Metadata = {
   title: 'NETVERSE 3D — Quán net của bạn',

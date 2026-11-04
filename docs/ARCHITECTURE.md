@@ -1,21 +1,34 @@
-# Kiến trúc và lộ trình NETVERSE
+# Kiến trúc NETVERSE 3D
 
-## MVP hiện tại
+## Dịch vụ
 
-- **Web (Next.js + React Three Fiber):** phòng low poly, 10 station, avatar có chuyển động idle/đi/chạy/ngồi đơn giản, camera góc nhìn thứ ba, WASD/Shift, collider bàn, ghế và màn hình có thể click, E để ngồi/đứng. Có giao diện PC và tab chat cộng đồng.
-- **Game (Colyseus):** một phòng `cafe`, tối đa 30 kết nối, đồng bộ vị trí, ghế và 50 tin nhắn gần nhất trong bộ nhớ. Server kiểm tra khoảng cách trước khi chiếm ghế và xử lý hai người chọn cùng máy. Mất kết nối sẽ thả ghế.
-- **API:** endpoint `/api/ready` kiểm tra PostgreSQL và Redis. Chưa xử lý AI hoặc người dùng; hai dịch vụ dữ liệu được chuẩn bị cho các giai đoạn tiếp theo.
-- **Gateway:** Nginx chỉ bind `127.0.0.1:18473`; `/socket/` bỏ prefix khi proxy sang Colyseus, `/api/` đi tới API, còn lại đi tới Next.
+| Dịch vụ | Trách nhiệm |
+| --- | --- |
+| Next.js + React Three Fiber | Bản đồ 200 máy, camera sau nhân vật, PC giả lập, cộng đồng, admin editor |
+| Colyseus | Vị trí, ghế, thời gian chơi, chat online 1:1 và phòng chung |
+| Node API | Tài khoản, hồ sơ, vị trí Save, trạng thái PC, ảnh, vote, phút tặng, bảng vàng, admin |
+| PostgreSQL | Dữ liệu người chơi, PC, ảnh, vote, vật thể và cấp nghệ sĩ |
+| Redis | Giới hạn đăng nhập admin và xác thực phiên ngồi máy cho API |
+| Nginx | Chỉ bind `127.0.0.1:18473`; chuyển `/api`, `/socket` và web |
 
-## Giới hạn và giai đoạn tiếp theo
+`shared/world.json` được tạo bởi `tools/generate-world.mjs` và dùng chung ở web/game server. Bản đồ gồm 5 hành lang × 20 hàng × 2 bên. Frontend chỉ dựng các máy gần avatar. Vị trí ghế và điều kiện chiếm ghế được kiểm tra tại game server.
 
-1. **Avatar & thế giới:** thay avatar mesh bằng GLB có idle/walk/run/sit sau khi xác minh license. Bổ sung NavMesh, ánh sáng và tối ưu draw call.
-2. **Multiplayer bền vững:** xác thực, vị trí server-authoritative đầy đủ, Redis presence, reconnect ngắn, chống spam và lưu trạng thái phòng. MVP hiện đồng bộ tức thời trong một process, chưa có reconnect và chưa an toàn cho triển khai public.
-3. **AI tại PC:** thêm đăng nhập, quota, phiên chat riêng, SSE từ API tới OpenAI/Gemini qua server, xóa phiên khi rời ghế, kiểm thử chi phí và bảo mật. Giao diện hiện ghi rõ AI chưa mở để tránh gửi request tốn tiền khi chưa có bảo vệ.
-4. **Hoàn thiện:** sofa, lễ tân, crown 1–3, admin, metric FPS và kiểm thử 30–50 máy.
+## Dữ liệu và quyền
 
-## Chạy và kiểm thử
+- Tài khoản dùng username, mật khẩu scrypt, cookie phiên HttpOnly; nickname không trùng không phân biệt chữ hoa/thường. WebSocket dùng vé Redis một lần có hạn 30 giây, không đưa cookie phiên dài hạn cho JavaScript. Ảnh avatar, hình nền PC và album lưu ở volume `media_data`. Ảnh chat chỉ chuyển tới người đang online và lưu trong IndexedDB của từng trình duyệt; server không ghi chat vào DB.
+- Bắt đầu với 60 phút. Game server trừ thời gian khi ngồi, gửi đồng hồ cho client và đưa avatar ra sân khi hết giờ. Người chơi có thể nhận phút từ người khác; giao dịch tặng và cộng thưởng ảnh do PostgreSQL xử lý.
+- Tác giả nhận 600 giây cho mỗi lượt thích hợp lệ. Mỗi tài khoản chỉ vote một lần trên ảnh, không tự vote. Unlike đòi hỏi đã dùng PC từ lúc ảnh đăng. Ảnh bị xóa khi có ít nhất 5 người dùng PC kể từ lúc đăng và số unlike lớn hơn một nửa số đó.
+- Admin dùng tài khoản `.env`, Cloudflare Turnstile Siteverify ở server và giới hạn 8 lần thử/15 phút theo địa chỉ IP. Test key Turnstile trong `.env.example` chỉ dùng local. Model chỉ nhận upload GLB/GLTF tự chứa dữ liệu, tối đa 10 MB, có giấy phép; admin xem trước, cân kích thước và xuất bản.
+- Browser trong PC chỉ nhúng URL HTTPS mà website đích cho phép iframe. Nhiều site từ chối nhúng qua `X-Frame-Options` hoặc CSP; UI không vượt qua giới hạn này.
 
-`npm run dev` chạy web ở 3000; `npm run dev:game` chạy Colyseus ở 2567. Trên localhost, web tự nối tới 2567. `npm run dev:api` cần PostgreSQL và Redis; cách chạy đầy đủ là Docker Compose. `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build` là các gate CI.
+## Giới hạn đang biết
 
-Với Docker, tạo `.env` từ `.env.example`, thay `POSTGRES_PASSWORD` bằng mật khẩu URL-safe, kiểm tra port 18473, rồi chạy `docker compose --env-file .env config --quiet` và `docker compose --env-file .env up -d --build`. Kiểm tra `/health`, `/api/ready`, `/socket/ready`, `/`. Dừng bằng `docker compose --env-file .env down` để giữ volume PostgreSQL. Không dùng `-v` nếu muốn giữ dữ liệu.
+- Mỗi game server process quản lý một phòng tối đa 250 người (200 máy và 50 chỗ chờ). Chưa có phân vùng nhiều phòng hoặc chuyển server khi tăng quy mô.
+- Phút chơi được ghi sau mỗi 5 giây và khi đứng dậy/rời phòng; nếu process sập đột ngột có thể sai lệch tối đa khoảng 5 giây.
+- Asset GLTF chứa URI ngoài không được nhập. Một số model quá nặng có thể làm giảm FPS dù frontend chỉ render máy gần người chơi.
+- Gemini cần `GEMINI_API_KEY` của người dùng. API chỉ trả phương án bố trí; admin phải duyệt từng vật thể trước khi công bố.
+- Local Docker chỉ bind loopback; chưa cấu hình HTTPS/Turnstile production và chưa chạy kiểm tải 200 người đồng thời.
+
+## Chạy
+
+Tạo `.env` từ `.env.example`, đổi `POSTGRES_PASSWORD` và `ADMIN_PASSWORD`, sau đó chạy `docker compose --env-file .env up -d --build`. Sau mỗi lần build lại API/web/game, cần cho Nginx khởi động lại để làm mới địa chỉ nội bộ: `docker compose --env-file .env up -d --force-recreate gateway`. Dữ liệu nằm trong volume `db_data` và `media_data`; `docker compose down` giữ lại chúng.

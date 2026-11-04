@@ -1,0 +1,26 @@
+- tôi muốn góc nhìn của nhân vật là góc nhìn số 2 là phía sau nhân vật
+- màn hình sẽ nằm trên 1 pc giả lập (có thể chuyển cảnh xem chi tiết màn hình giả lập), chứ ko phải màn hình nằm 1 bên
+- Tìm cho tôi 1 thế giới mở tầm 200 máy PC
+- Ngoài ra nếu ai bước ra mà quên tắt máy, thì người khác vào sẽ thấy hết,
+- PC có thể chức năng trình duyệt để vào web, xem phim.
+- tôi muốn có trang admin sẽ phải đăng nhập, dùng tài khoản .env và cloudflare captcha để bảo mật,
+- admin có chức năng xây dựng thế giới mở rộng với các assets đã có kéo thả, di chuyển đồ vật, hoặc dùng AI để sắp xêp theo comment prompt dùng api key gemini để làm.
+- có 1 chỗ để download asséts thông qua các web tìm kiếm asséts, admin sẽ dán link assets đó hệ thống sẽ tải về và cập nhật vào đó.
+- người chơi có thể lưu game lại bằng nút save và tạo 1 username pass để lần sau vào chỉ cần nhập
+- người chơi có thể vẽ hình trên desktop để làm background, hoặc up ảnh của họ lên làm background desktop pc giả lập, người sau vẫn có thể thấy,
+- các ảnh đã được up trong desktop pc giả lập, những người chơi khác vào máy đó sẽ thấy album ảnh, và ảnh nào đẹp sẽ like, ảnh nào không đẹp sẽ unlike,
+- nếu ảnh nào có hơn 50% người sử dụng máy pc đó unlike thì ảnh đó sẽ được xóa vĩnh viễn.
+- sẽ có top 10 ảnh của các PC được đưa lên bảng vàng trong tab top tranh hạng, các người chơi khác có thể like ảnh đó.
+- mỗi ảnh được like sẽ được cộng 10 phút dùng net pc.
+- nếu hết giờ chơi  người đó phải đi ra khỏi quán net, sau đó phải đi ăn xin. ( có hành động quỳ ăn xin, người chơi phải để avâtrr đẹp nhất của họ ) để người chơi khác bố thí cho số phút chơi.
+- có 1 màn hình chính lớn ở 1 khu vực để thống kê top bảng đại gia phòng net, và top 5 người cứu net hay đi cho người khác.
+- mỗi người sẽ có thể upload ảnh avatar của họ lên profile của họ,
+- có chức năng chat 1vs1 nếu người đó chọn nhân vật trong cộng đồng và nhấn chat riêng,
+- chức năng chat có thể upload ảnh và chat với nhau.
+- các message, ảnh trong khung chat 1vs1, hoặc cộng đồng sẽ được lưu ở máy tính của người chơi thật, ai có onl sẽ có data đó, không onl sẽ không thấy tin nhắn đó.
+- chỉ có những ảnh album mới được lưu vào server khi dùng chức năng phòng tranh ( trong máy tính giả lập chức năng up ảnh đê câu like).
+- khi người chơi ngồi xuống sẽ được tính thời gian chơi net ở trên màn hình pc giả lập,
+- sẽ có bộ level nghệ sĩ, up càng nhiều, hoặc nhiều người like sẽ thăng cấp, admin có thể cấu hình, và gợi ý cấu hình mặc định cho tôi.
+- ở màn hình chính game sẽ có 1 tab cộng động để hiển thị số người onl,
+- thông tin profile sẽ có avatar, fullname, nickname (nickname không được trùng)
+- thông tin profile sẽ nằm ở đầu nhân vật game, và những chỗ chat hoặc album ảnh.

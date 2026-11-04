@@ -11,7 +11,7 @@ type Props = {
 };
 
 export default function GamingStation({ station, active, occupied, onScreenClick }: Props) {
-  const side = Math.sign(station.position[0]);
+  const side = station.side;
   const [x, , z] = station.position;
   const handleScreenClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();

@@ -1,0 +1,250 @@
+.admin-shell {
+  min-height: 100dvh;
+  overflow: auto;
+  background: #151422;
+  color: #f1ecff;
+  padding: 25px 30px 60px;
+  font-family: 'DM Sans', sans-serif;
+}
+.admin-shell header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+.admin-shell header a {
+  color: #aa91ed;
+  text-decoration: none;
+}
+.admin-shell h1 {
+  font:
+    600 29px 'Space Grotesk',
+    sans-serif;
+  margin: 0;
+  flex: 1;
+}
+.admin-shell h2 {
+  font:
+    600 19px 'Space Grotesk',
+    sans-serif;
+  margin: 0 0 12px;
+}
+.admin-shell h3 {
+  font-size: 14px;
+}
+.admin-shell p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #c7bed8;
+}
+.admin-shell small {
+  color: #a99fbe;
+  font-size: 11px;
+}
+.admin-shell button {
+  background: #8d74d9;
+  border: 0;
+  border-radius: 7px;
+  color: #191428;
+  padding: 9px 13px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.admin-shell button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.admin-shell input,
+.admin-shell textarea {
+  background: #ffffff0f;
+  border: 1px solid #aa98db66;
+  border-radius: 6px;
+  color: #fff;
+  padding: 9px;
+  font: inherit;
+  font-size: 12px;
+}
+.admin-shell textarea {
+  width: 100%;
+  height: 100px;
+  resize: vertical;
+}
+.admin-notice {
+  padding: 10px 14px;
+  background: #4a335b;
+  color: #fff !important;
+  border: 1px solid #b69edb;
+  border-radius: 7px;
+}
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.admin-card {
+  padding: 20px;
+  background: #232139;
+  border: 1px solid #a08cce50;
+  border-radius: 13px;
+  min-width: 0;
+}
+.admin-card form {
+  display: grid;
+  gap: 9px;
+}
+.admin-card label {
+  display: block;
+  font-size: 12px;
+  color: #d8cee8;
+  margin: 9px 0;
+}
+.admin-card label input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+.admin-login {
+  max-width: 430px;
+  margin: 90px auto;
+}
+.admin-login form {
+  display: block;
+}
+.admin-login > button {
+  margin-top: 12px;
+}
+.admin-login > div {
+  margin-top: 15px;
+}
+.asset-list {
+  max-height: 250px;
+  overflow: auto;
+  margin-top: 15px;
+  display: grid;
+  gap: 6px;
+}
+.asset-list button {
+  background: #ffffff0f;
+  color: #e8dcfa;
+  text-align: left;
+}
+.asset-list button.selected {
+  background: #7260ad;
+}
+.asset-list small {
+  display: block;
+  margin-top: 4px;
+}
+.model-preview {
+  height: 280px;
+  border: 1px solid #ffffff33;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #171624;
+}
+.admin-card > button {
+  margin: 7px 6px 0 0;
+}
+.admin-editor {
+  grid-row: span 2;
+}
+.world-map {
+  position: relative;
+  width: min(100%, 390px);
+  height: 570px;
+  margin: 10px auto;
+  background:
+    repeating-linear-gradient(0deg, #ffffff09 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(90deg, #ffffff09 0 1px, transparent 1px 24px), #171625;
+  border: 2px solid #a18bd1;
+  border-radius: 8px;
+  touch-action: none;
+}
+.station-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #9e7ef1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.object-dot {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffb87d;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  touch-action: none;
+}
+.object-dot.published {
+  background: #84efc8;
+}
+.object-controls {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+.object-controls h3 {
+  width: 100%;
+  margin: 8px 0 0;
+}
+.object-controls label {
+  width: 75px;
+  margin: 0;
+}
+.object-controls label input {
+  width: 100%;
+  margin-top: 3px;
+}
+.object-controls label:has(input[type='checkbox']) {
+  width: auto;
+}
+.object-controls input[type='checkbox'] {
+  width: auto;
+  display: inline;
+}
+.proposal-list {
+  max-height: 230px;
+  overflow: auto;
+}
+.proposal-list p {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px;
+  border-bottom: 1px solid #ffffff23;
+}
+.level-list {
+  display: grid;
+  gap: 7px;
+}
+.level-list > div {
+  display: grid;
+  grid-template-columns: 25px 1fr 70px 70px;
+  gap: 6px;
+  align-items: center;
+}
+.level-list input {
+  min-width: 0;
+  width: 100%;
+}
+@media (max-width: 850px) {
+  .admin-shell {
+    padding: 16px;
+  }
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+  .admin-editor {
+    grid-row: auto;
+  }
+  .world-map {
+    height: 500px;
+  }
+}

@@ -1,26 +1,31 @@
+import world from '../../../shared/world.json';
+
 export type Point3 = [number, number, number];
 
 export type Station = {
   stationId: number;
+  zone: number;
+  side: number;
   position: Point3;
   seatAnchor: Point3;
   screenAnchor: Point3;
   interactionRadius: number;
 };
 
-export const stations: Station[] = Array.from({ length: 10 }, (_, index) => {
-  const side = index < 5 ? -1 : 1;
-  const row = index % 5;
-  const x = side * 3.25;
-  const z = -4.6 + row * 2.3;
+export const stations: Station[] = world.stations.map((item) => {
   return {
-    stationId: index + 1,
-    position: [x, 0, z],
-    seatAnchor: [x - side * 1.12, 0, z],
-    screenAnchor: [x - side * 0.1, 1.36, z],
+    stationId: item.id,
+    zone: item.zone,
+    side: item.side,
+    position: [item.x, 0, item.z],
+    seatAnchor: [item.seatX, 0, item.z],
+    screenAnchor: [item.screenX, 1.36, item.z],
     interactionRadius: 1.6,
   };
 });
+
+export const spawn: Point3 = [world.spawn[0], world.spawn[1], world.spawn[2]];
+export const worldBounds = { halfWidth: world.width / 2 - 0.9, halfLength: world.length / 2 - 0.9 };
 
 export function nearestStation(x: number, z: number): Station | null {
   let nearest: Station | null = null;
@@ -36,7 +41,7 @@ export function nearestStation(x: number, z: number): Station | null {
 }
 
 export function canMoveTo(x: number, z: number): boolean {
-  if (Math.abs(x) > 5.65 || Math.abs(z) > 6.35) return false;
+  if (Math.abs(x) > worldBounds.halfWidth || Math.abs(z) > worldBounds.halfLength) return false;
   // Desk footprints are colliders; the aisle and chair approach stay open.
   return !stations.some((station) =>
     Math.abs(x - station.position[0]) < 0.81 &&
