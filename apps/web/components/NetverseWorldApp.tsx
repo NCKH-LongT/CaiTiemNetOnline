@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import NetverseScene, { type RemotePlayer } from './NetverseScene';
 import PcDesktop from './PcDesktop';
+import CommunityMusic from './CommunityMusic';
 import { api, readImage, type ArtImage, type Player } from '@/lib/api';
 import { loadChatMessages, saveChatMessage, type LocalChatMessage } from '@/lib/local-chat';
 import { nearestStation, spawn, stations, type Point3 } from '@/lib/stations';
@@ -157,9 +158,14 @@ export default function NetverseWorldApp() {
           }),
         ),
       );
-      joined.onMessage('seat', ({ stationId }: { stationId: number | null }) =>
-        setSeatedAt(stationId),
-      );
+      joined.onMessage('seat', ({ stationId, x, z }: { stationId: number | null; x?: number; z?: number }) => {
+        setSeatedAt(stationId);
+        if (stationId === null && Number.isFinite(x) && Number.isFinite(z)) {
+          position.current = [x!, 0, z!];
+          setSceneStart([x!, 0, z!]);
+          setSceneKey((current) => current + 1);
+        }
+      });
       joined.onMessage('time', ({ seconds: amount }: { seconds: number }) => {
         setSeconds(amount);
         if (amount > 0) setKneeling(false);
@@ -405,6 +411,7 @@ export default function NetverseWorldApp() {
       </header>
       {entered && player ? (
         <>
+          <CommunityMusic />
           <nav className="main-tabs" aria-label="Màn hình chính">
             <button
               className={mainTab === 'world' ? 'selected' : ''}
@@ -518,6 +525,17 @@ export default function NetverseWorldApp() {
             <PcDesktop
               stationId={seatedAt}
               seconds={seconds}
+              viewerId={player.id}
+              onlinePlayers={players}
+              onPrivateChat={(userId) => {
+                const target = players.find((item) => item.userId === userId && item.id !== sessionId);
+                if (!target || connection !== 'online') {
+                  setNotice('Người này vừa offline. Hãy thử lại khi họ online.');
+                  return;
+                }
+                setChatTarget({ sessionId: target.id, userId, name: target.name });
+                setMainTab('community');
+              }}
               onAlbumChange={() => {
                 room.current?.send('profile-refresh');
                 api<{ uploads: number; likes: number; level: { name: string } | null }>('/api/player/artist')

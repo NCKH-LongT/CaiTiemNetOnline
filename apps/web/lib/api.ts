@@ -13,6 +13,7 @@ export type Player = {
 
 export type ArtImage = {
   id: string;
+  player_id: string;
   image_url: string;
   title: string;
   station_id: number;
@@ -20,6 +21,18 @@ export type ArtImage = {
   avatar_url: string | null;
   likes: number;
   unlikes?: number;
+};
+
+export type PublicProfile = {
+  id: string;
+  nickname: string;
+  fullname: string;
+  avatar_url: string | null;
+  online_seconds: number;
+  created_at: string;
+  uploads: number;
+  likes: number;
+  badge: string | null;
 };
 
 export async function api<T>(path: string, value?: unknown): Promise<T> {

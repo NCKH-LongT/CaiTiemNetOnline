@@ -212,7 +212,7 @@ export class CafeRoom extends Room {
       player.z = anchor.z;
       this.seats.delete(player.seatedAt);
       player.seatedAt = null;
-      client.send('seat', { stationId: null });
+      client.send('seat', { stationId: null, x: player.x, z: player.z });
       this.sendSnapshot();
     });
     this.onMessage('chat', (client, data) => {

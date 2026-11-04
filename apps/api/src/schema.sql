@@ -62,6 +62,18 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
   token_hash text PRIMARY KEY,
   expires_at timestamptz NOT NULL
 );
+CREATE TABLE IF NOT EXISTS music_tracks (
+  id uuid PRIMARY KEY,
+  title text NOT NULL,
+  file_url text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS music_state (
+  id integer PRIMARY KEY CHECK (id = 1),
+  track_id uuid REFERENCES music_tracks(id) ON DELETE SET NULL,
+  started_at timestamptz
+);
+INSERT INTO music_state (id) VALUES (1) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS world_objects (
   id uuid PRIMARY KEY,
   asset_url text NOT NULL,

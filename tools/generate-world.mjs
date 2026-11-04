@@ -8,7 +8,7 @@ const round = (value) => Number(value.toFixed(2));
 for (let aisle = 0; aisle < 5; aisle += 1) {
   const aisleX = (aisle - 2) * 6;
   for (let row = 0; row < 20; row += 1) {
-    const z = round(-20 + row * 2.1);
+    const z = round(-24 + row * 2.45);
     for (const side of [-1, 1]) {
       const x = round(aisleX + side * 1.8);
       stations.push({

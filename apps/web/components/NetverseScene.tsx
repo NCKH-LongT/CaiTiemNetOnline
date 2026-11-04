@@ -235,7 +235,7 @@ function LeaderboardBoard({ data }: { data?: Props['leaderboard'] }) {
     [texture],
   );
   return (
-    <group position={[0, 3.2, -22.5]}>
+    <group position={[0, 3.2, -30.5]}>
       <mesh>
         <boxGeometry args={[8.3, 4.3, 0.2]} />
         <meshStandardMaterial color={data?.board?.background_color || '#231c3c'} />
@@ -369,8 +369,10 @@ function World(props: Props) {
   const { camera, gl } = useThree();
   const avatarGroup = useRef<THREE.Group>(null);
   const avatarPosition = useRef<Point3>([...props.startPosition]);
-  const heading = useRef(Math.PI);
-  const cameraYaw = useRef(Math.PI);
+  const heading = useRef(0);
+  const cameraYaw = useRef(0);
+  const movementInput = useRef('');
+  const movementHeading = useRef(0);
   const cameraPitch = useRef(0);
   const visibleCell = useRef('');
   const [visibleStations, setVisibleStations] = useState(() =>
@@ -436,11 +438,13 @@ function World(props: Props) {
         Number(props.heldKeys.current.has('s') || props.heldKeys.current.has('arrowdown'));
       if (strafe || forward) {
         movementAmount.current = props.heldKeys.current.has('shift') ? 1.7 : 1;
-        let dx = Math.sin(cameraYaw.current) * forward + Math.cos(cameraYaw.current) * strafe;
-        let dz = Math.cos(cameraYaw.current) * forward - Math.sin(cameraYaw.current) * strafe;
-        const length = Math.hypot(dx, dz);
-        dx /= length;
-        dz /= length;
+        const input = `${strafe}:${forward}`;
+        if (input !== movementInput.current) {
+          movementInput.current = input;
+          movementHeading.current = cameraYaw.current + Math.atan2(strafe, forward);
+        }
+        const dx = Math.sin(movementHeading.current);
+        const dz = Math.cos(movementHeading.current);
         const speed = props.heldKeys.current.has('shift') ? 5 : 3.1;
         const nextX = position[0] + dx * speed * Math.min(delta, 0.05);
         const nextZ = position[2] + dz * speed * Math.min(delta, 0.05);
@@ -458,6 +462,11 @@ function World(props: Props) {
           lastMoveSend.current = now;
         }
       }
+      else movementInput.current = '';
+    }
+    if (props.cameraEnabled && !seatedStation) {
+      const yawDifference = Math.atan2(Math.sin(heading.current - cameraYaw.current), Math.cos(heading.current - cameraYaw.current));
+      cameraYaw.current += yawDifference * Math.min(1, delta * 3.5);
     }
     const current = avatarPosition.current;
     const cell = `${Math.floor(current[0] / 4)}:${Math.floor(current[2] / 4)}`;

@@ -4,6 +4,7 @@ import net from 'node:net';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@colyseus/sdk';
+import world from '../shared/world.json' with { type: 'json' };
 
 async function freePort() {
   const socket = net.createServer();
@@ -40,8 +41,9 @@ test('two clients cannot occupy one station; leaving frees it', { timeout: 15000
     let snapshotA;
     let snapshotB;
     let rejected = false;
+    let standPosition;
     a.onMessage('snapshot', (value) => { snapshotA = value; });
-    a.onMessage('seat', () => {});
+    a.onMessage('seat', (value) => { if (value.stationId === null) standPosition = value; });
     a.onMessage('player-move', () => {});
     a.onMessage('nearby-players', () => {});
     a.onMessage('time', () => {});
@@ -56,10 +58,12 @@ test('two clients cannot occupy one station; leaving frees it', { timeout: 15000
     b.send('sync');
     await waitFor(() => snapshotA?.players.length === 2 && snapshotB?.players.length === 2);
 
+    const first = world.stations[119];
+    const second = world.stations[117];
     // Move both players close to station 120 in small, valid increments.
     for (let step = 1; step <= 8; step += 1) {
-      const x = 0.68 * step / 8;
-      const z = 23 - 3.1 * step / 8;
+      const x = first.seatX * step / 8;
+      const z = world.spawn[2] + (first.z - world.spawn[2]) * step / 8;
       a.send('move', { x, z });
       b.send('move', { x, z });
       await delay(100);
@@ -72,8 +76,16 @@ test('two clients cannot occupy one station; leaving frees it', { timeout: 15000
     assert.equal(snapshotB.seats[120], a.sessionId);
     a.send('stand');
     await waitFor(() => !snapshotB?.seats[120]);
+    assert.equal(standPosition.x, first.seatX);
+    assert.equal(standPosition.z, first.z);
     b.send('sit', { stationId: 120 });
     await waitFor(() => snapshotB?.seats[120] === b.sessionId);
+    for (let step = 1; step <= 8; step += 1) {
+      a.send('move', { x: first.seatX + (second.seatX - first.seatX) * step / 8, z: first.z + (second.z - first.z) * step / 8 });
+      await delay(100);
+    }
+    a.send('sit', { stationId: 118 });
+    await waitFor(() => snapshotA?.seats[118] === a.sessionId);
   } finally {
     await Promise.allSettled([a?.leave(), b?.leave()]);
     server.kill('SIGTERM');

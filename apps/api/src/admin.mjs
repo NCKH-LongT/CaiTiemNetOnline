@@ -112,6 +112,12 @@ export async function adminRoutes(pool, redis, request, response, route) {
   }
   if (route === '/api/admin/me' && method === 'GET')
     return json(response, 200, { admin: await adminSession(pool, request) });
+  if (route === '/api/music/current' && method === 'GET') {
+    const result = await pool.query(
+      'SELECT t.id,t.title,t.file_url,s.started_at FROM music_state s LEFT JOIN music_tracks t ON t.id=s.track_id WHERE s.id=1',
+    );
+    return json(response, 200, { track: result.rows[0]?.id ? result.rows[0] : null, serverTime: new Date().toISOString() });
+  }
   if (route === '/api/world' && method === 'GET') {
     const result = await pool.query(
       'SELECT id,asset_url,x,y,z,rotation,scale FROM world_objects WHERE published=true ORDER BY created_at',
@@ -120,6 +126,48 @@ export async function adminRoutes(pool, redis, request, response, route) {
   }
   if (!route.startsWith('/api/admin/')) return false;
   if (!(await adminSession(pool, request))) throw fail('admin_required', 401);
+  if (route === '/api/admin/music' && method === 'GET') {
+    const result = await pool.query('SELECT id,title,file_url,created_at FROM music_tracks ORDER BY created_at DESC');
+    return json(response, 200, { tracks: result.rows });
+  }
+  if (route === '/api/admin/music' && method === 'POST') {
+    const data = await body(request, 12_000_000);
+    const title = String(data.title || '').trim().slice(0, 100);
+    const match = /^data:audio\/(?:mpeg|mp3);base64,([A-Za-z0-9+/=]+)$/.exec(data.audio || '');
+    if (!title || !match) throw fail('invalid_music');
+    const binary = Buffer.from(match[1], 'base64');
+    if (binary.length < 128 || binary.length > 8_000_000 ||
+      !(binary.toString('ascii', 0, 3) === 'ID3' || (binary[0] === 0xff && (binary[1] & 0xe0) === 0xe0)))
+      throw fail('invalid_mp3');
+    const id = randomUUID();
+    const filename = `music-${id}.mp3`;
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(path.join(dataDir, filename), binary, { flag: 'wx' });
+    try {
+      const result = await pool.query('INSERT INTO music_tracks (id,title,file_url) VALUES ($1,$2,$3) RETURNING *', [id, title, `/api/media/${filename}`]);
+      return json(response, 201, { track: result.rows[0] });
+    } catch (cause) {
+      await unlink(path.join(dataDir, filename)).catch(() => {});
+      throw cause;
+    }
+  }
+  if (route === '/api/admin/music/play' && method === 'POST') {
+    const data = await body(request);
+    const trackId = data.trackId === null ? null : String(data.trackId || '');
+    if (trackId !== null && !/^[0-9a-f-]{36}$/.test(trackId)) throw fail('invalid_track');
+    const result = await pool.query(
+      'UPDATE music_state SET track_id=$1,started_at=CASE WHEN $1::uuid IS NULL THEN NULL ELSE now() END WHERE id=1 RETURNING track_id,started_at',
+      [trackId],
+    );
+    return json(response, 200, { state: result.rows[0] });
+  }
+  const musicMatch = /^\/api\/admin\/music\/([0-9a-f-]{36})$/.exec(route);
+  if (musicMatch && method === 'POST') {
+    const result = await pool.query('DELETE FROM music_tracks WHERE id=$1 RETURNING file_url', [musicMatch[1]]);
+    if (!result.rowCount) throw fail('not_found', 404);
+    await unlink(path.join(dataDir, path.basename(result.rows[0].file_url))).catch(() => {});
+    return json(response, 200, { ok: true });
+  }
   if (route === '/api/admin/board' && method === 'GET') {
     const result = await pool.query('SELECT background_url,background_color FROM board_settings WHERE id=1');
     return json(response, 200, { board: result.rows[0] });

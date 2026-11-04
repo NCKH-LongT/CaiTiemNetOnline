@@ -35,7 +35,11 @@ const server = http.createServer((request, response) => {
         const exists = await pool.query('SELECT 1 FROM asset_catalog WHERE asset_url=$1', [route]);
         if (!exists.rowCount) return json(response, 404, { error: 'not_found' });
       }
-      return serveMedia(response, route.slice('/api/media/'.length));
+      if (route.startsWith('/api/media/music-')) {
+        const exists = await pool.query('SELECT 1 FROM music_tracks WHERE file_url=$1', [route]);
+        if (!exists.rowCount) return json(response, 404, { error: 'not_found' });
+      }
+      return serveMedia(response, route.slice('/api/media/'.length), request);
     }
     await adminRoutes(pool, redis, request, response, route);
     if (response.writableEnded) return;

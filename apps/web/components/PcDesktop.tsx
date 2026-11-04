@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { api, type ArtImage } from '@/lib/api';
+import { api, type ArtImage, type PublicProfile } from '@/lib/api';
 import { compressDesktopImage } from '@/lib/desktop-image';
 import { embeddableUrl } from '@/lib/embed-url';
 
@@ -10,7 +11,10 @@ type State = { wallpaper_url?: string; browser_url?: string };
 type Props = {
   stationId: number;
   seconds: number;
+  viewerId: string;
+  onlinePlayers: { userId?: string }[];
   onAlbumChange: () => void;
+  onPrivateChat: (userId: string) => void;
   onStand: () => void;
 };
 const formatTime = (seconds: number) =>
@@ -19,7 +23,7 @@ const formatTime = (seconds: number) =>
     .padStart(2, '0')}:${Math.floor(seconds % 60)
     .toString()
     .padStart(2, '0')}`;
-export default function PcDesktop({ stationId, seconds, onAlbumChange, onStand }: Props) {
+export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers, onAlbumChange, onPrivateChat, onStand }: Props) {
   const [tab, setTab] = useState<'desktop' | 'browser' | 'album' | 'top'>('desktop');
   const [state, setState] = useState<State>({});
   const [images, setImages] = useState<ArtImage[]>([]);
@@ -28,6 +32,10 @@ export default function PcDesktop({ stationId, seconds, onAlbumChange, onStand }
   const [title, setTitle] = useState('');
   const [drawing, setDrawing] = useState(false);
   const [notice, setNotice] = useState('');
+  const [selectedImage, setSelectedImage] = useState<ArtImage | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [profileError, setProfileError] = useState('');
   const canvas = useRef<HTMLCanvasElement>(null);
   const painting = useRef(false);
 
@@ -62,6 +70,36 @@ export default function PcDesktop({ stationId, seconds, onAlbumChange, onStand }
     context.lineWidth = 6;
     context.lineCap = 'round';
   }, [drawing]);
+  useEffect(() => {
+    if (!profileId) return;
+    let active = true;
+    api<{ profile: PublicProfile }>(`/api/players/${profileId}`)
+      .then((result) => {
+        if (active) setProfile(result.profile);
+      })
+      .catch((error) => {
+        if (active) setProfileError((error as Error).message);
+      });
+    return () => { active = false; };
+  }, [profileId]);
+  useEffect(() => {
+    if (!selectedImage && !profileId) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (profileId) setProfileId(null);
+      else setSelectedImage(null);
+    };
+    window.addEventListener('keydown', closeOnEscape, true);
+    return () => window.removeEventListener('keydown', closeOnEscape, true);
+  }, [selectedImage, profileId]);
+
+  const showProfile = (userId: string) => {
+    setProfile(null);
+    setProfileError('');
+    setProfileId(userId);
+  };
 
   const uploadWallpaper = async (file: File) => {
     try {
@@ -143,21 +181,25 @@ export default function PcDesktop({ stationId, seconds, onAlbumChange, onStand }
     <div className="gallery-grid">
       {items.map((image) => (
         <article className="gallery-item" key={image.id}>
-          <Image
-            unoptimized
-            src={image.image_url}
-            alt={image.title || 'Tranh trong phòng'}
-            width={320}
-            height={240}
-          />
+          <button className="gallery-zoom" onClick={() => setSelectedImage(image)} aria-label={`Xem ảnh ${image.title || 'Không tên'} ở kích thước lớn`}>
+            <Image
+              unoptimized
+              src={image.image_url}
+              alt={image.title || 'Tranh trong phòng'}
+              width={320}
+              height={240}
+            />
+            <span>XEM ẢNH ⤢</span>
+          </button>
           <div>
             <strong>{image.title || 'Không tên'}</strong>
-            <small>
+            <button className="gallery-author" onClick={() => showProfile(image.player_id)} aria-label={`Xem profile của ${image.nickname}`}>
               {image.avatar_url && (
                 <Image unoptimized src={image.avatar_url} alt="" width={18} height={18} />
-              )}{' '}
-              {image.nickname} · {image.likes} lượt thích
-            </small>
+              )}
+              <span>{image.nickname}</span>
+            </button>
+            <small>{image.likes} lượt thích</small>
           </div>
           <div className="vote-actions">
             <button onClick={() => vote(image.id, 1)}>♥ Thích</button>
@@ -326,6 +368,66 @@ export default function PcDesktop({ stationId, seconds, onAlbumChange, onStand }
             </div>
           </div>
         </div>
+      )}
+      {selectedImage && createPortal(
+        <div className="art-overlay" onClick={(event) => {
+          if (event.target === event.currentTarget) setSelectedImage(null);
+        }}>
+          <section className="art-lightbox" role="dialog" aria-modal="true" aria-label={`Ảnh ${selectedImage.title || 'Không tên'}`}>
+            <button className="art-close" onClick={() => setSelectedImage(null)} aria-label="Đóng ảnh" autoFocus>×</button>
+            <div className="art-lightbox-image">
+              <Image unoptimized fill sizes="100vw" src={selectedImage.image_url} alt={selectedImage.title || 'Tranh trong phòng'} style={{ objectFit: 'contain' }} />
+            </div>
+            <div className="art-lightbox-info">
+              <div>
+                <strong>{selectedImage.title || 'Không tên'}</strong>
+                <small>Máy #{String(selectedImage.station_id).padStart(3, '0')} · {selectedImage.likes} lượt thích</small>
+              </div>
+              <button className="gallery-author" onClick={() => showProfile(selectedImage.player_id)} aria-label={`Xem profile của ${selectedImage.nickname}`}>
+                {selectedImage.avatar_url && <Image unoptimized src={selectedImage.avatar_url} alt="" width={26} height={26} />}
+                <span>{selectedImage.nickname} ↗</span>
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      )}
+      {profileId && createPortal(
+        <div className="art-overlay art-profile-overlay" onClick={(event) => {
+          if (event.target === event.currentTarget) setProfileId(null);
+        }}>
+          <section className="art-profile" role="dialog" aria-modal="true" aria-label="Profile tác giả">
+            <button className="art-close" onClick={() => setProfileId(null)} aria-label="Đóng profile" autoFocus>×</button>
+            {profile ? (
+              <>
+                <div className="art-profile-heading">
+                  <div className="art-profile-avatar">
+                    {profile.avatar_url ? <Image unoptimized src={profile.avatar_url} alt="" width={76} height={76} /> : profile.nickname.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div>
+                    <h2>{profile.nickname}</h2>
+                    <p>{profile.fullname}</p>
+                    {profile.badge && profile.badge !== 'Tân binh' && <span className="art-badge">✦ {profile.badge}</span>}
+                  </div>
+                </div>
+                <div className="art-profile-stats">
+                  <span><b>{profile.uploads}</b> tranh hiện có</span>
+                  <span><b>{profile.likes}</b> lượt thích</span>
+                  <span><b>{Math.floor(profile.online_seconds / 3600)}h {Math.floor(profile.online_seconds % 3600 / 60)}p</b> online</span>
+                </div>
+                <p className="art-profile-since">Tham gia từ {new Date(profile.created_at).toLocaleDateString('vi-VN')}</p>
+                {profile.id === viewerId ? (
+                  <p>Đây là profile của bạn.</p>
+                ) : onlinePlayers.some((item) => item.userId === profile.id) ? (
+                  <button className="art-chat" onClick={() => onPrivateChat(profile.id)}>CHAT RIÊNG ↗</button>
+                ) : (
+                  <p>Người này đang offline. Chat riêng chỉ mở khi cả hai cùng online.</p>
+                )}
+              </>
+            ) : <p>{profileError || 'Đang tải profile...'}</p>}
+          </section>
+        </div>,
+        document.body,
       )}
     </section>
   );

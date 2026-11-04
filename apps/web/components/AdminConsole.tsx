@@ -33,6 +33,7 @@ type Proposal = {
 };
 type Config = { sitekey: string | null; configured: boolean; gemini: boolean };
 type Board = { background_url: string | null; background_color: string };
+type MusicTrack = { id: string; title: string; file_url: string; created_at: string };
 type TurnstileApi = {
   render: (
     target: HTMLElement,
@@ -80,6 +81,10 @@ export default function AdminConsole() {
   const [password, setPassword] = useState('');
   const [captcha, setCaptcha] = useState('');
   const [notice, setNotice] = useState('');
+  const [musicTracks, setMusicTracks] = useState<MusicTrack[]>([]);
+  const [playingTrack, setPlayingTrack] = useState<string | null>(null);
+  const [musicTitle, setMusicTitle] = useState('');
+  const [musicFile, setMusicFile] = useState<File | null>(null);
   const [board, setBoard] = useState<Board>({ background_url: null, background_color: '#231c3c' });
   const [boardFile, setBoardFile] = useState<File | null>(null);
   const [boardPreview, setBoardPreview] = useState<string | null>(null);
@@ -118,12 +123,16 @@ export default function AdminConsole() {
       api<{ objects: Object3D[] }>('/api/admin/world'),
       api<{ levels: Level[] }>('/api/admin/levels'),
       api<{ board: Board }>('/api/admin/board'),
+      api<{ tracks: MusicTrack[] }>('/api/admin/music'),
+      api<{ track: { id: string } | null }>('/api/music/current'),
     ])
-      .then(([assetResult, worldResult, levelResult, boardResult]) => {
+      .then(([assetResult, worldResult, levelResult, boardResult, musicResult, playingResult]) => {
         setAssets(assetResult.assets);
         setObjects(worldResult.objects);
         setLevels(levelResult.levels);
         setBoard(boardResult.board);
+        setMusicTracks(musicResult.tracks);
+        setPlayingTrack(playingResult.track?.id || null);
       })
       .catch((error) => setNotice(error.message));
   }, [admin]);
@@ -162,6 +171,40 @@ export default function AdminConsole() {
       setCaptcha('');
       window.turnstile?.reset(captchaWidget.current || undefined);
     }
+  };
+  const uploadMusic = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!musicFile) return;
+    try {
+      if (musicFile.size > 8_000_000 || !musicFile.name.toLowerCase().endsWith('.mp3'))
+        throw new Error('Chọn file MP3 dưới 8 MB.');
+      const audio = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Không đọc được file nhạc.'));
+        reader.readAsDataURL(musicFile);
+      });
+      const result = await api<{ track: MusicTrack }>('/api/admin/music', { title: musicTitle, audio });
+      setMusicTracks((current) => [result.track, ...current]);
+      setMusicTitle('');
+      setMusicFile(null);
+      setNotice('Đã thêm bài nhạc.');
+    } catch (error) { setNotice((error as Error).message); }
+  };
+  const playMusic = async (trackId: string | null) => {
+    try {
+      await api('/api/admin/music/play', { trackId });
+      setPlayingTrack(trackId);
+      setNotice(trackId ? 'Đang phát nhạc cho cộng đồng.' : 'Đã dừng nhạc chung.');
+    } catch (error) { setNotice((error as Error).message); }
+  };
+  const deleteMusic = async (track: MusicTrack) => {
+    try {
+      await api(`/api/admin/music/${track.id}`, {});
+      setMusicTracks((current) => current.filter((item) => item.id !== track.id));
+      if (playingTrack === track.id) setPlayingTrack(null);
+      setNotice('Đã xóa bài nhạc.');
+    } catch (error) { setNotice((error as Error).message); }
   };
   const uploadAsset = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -353,6 +396,24 @@ export default function AdminConsole() {
         </form>
       ) : (
         <div className="admin-grid">
+          <section className="admin-card admin-music">
+            <h2>Nhạc cộng đồng</h2>
+            <p>Tải MP3 dưới 8 MB. Bài admin chọn sẽ phát cho mọi người; mỗi người có thể tự tắt tiếng.</p>
+            <form onSubmit={uploadMusic}>
+              <input value={musicTitle} onChange={(event) => setMusicTitle(event.target.value)} placeholder="Tên bài nhạc" required maxLength={100} aria-label="Tên bài nhạc" />
+              <input type="file" accept=".mp3,audio/mpeg" onChange={(event) => setMusicFile(event.target.files?.[0] || null)} required aria-label="File MP3" />
+              <button type="submit">TẢI BÀI LÊN</button>
+            </form>
+            <div className="admin-music-list">
+              {musicTracks.map((track) => <div key={track.id}>
+                <strong>{track.title}</strong>
+                <button onClick={() => playMusic(track.id)} disabled={playingTrack === track.id}>{playingTrack === track.id ? 'ĐANG PHÁT' : 'PHÁT'}</button>
+                <button onClick={() => deleteMusic(track)}>XÓA</button>
+              </div>)}
+              {!musicTracks.length && <p>Chưa tải bài nhạc nào.</p>}
+            </div>
+            <button onClick={() => playMusic(null)} disabled={!playingTrack}>DỪNG NHẠC</button>
+          </section>
           <section className="admin-card">
             <h2>Nền bảng vàng</h2>
             <p>Chọn màu và ảnh nền cho bảng vàng trong quán. Ảnh được nén trước khi tải lên.</p>

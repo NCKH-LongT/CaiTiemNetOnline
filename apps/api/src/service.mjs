@@ -82,24 +82,36 @@ export async function storeImage(dataUrl, kind) {
   await writeFile(path.join(dataDir, filename), buffer, { flag: 'wx' });
   return `/api/media/${filename}`;
 }
-export async function serveMedia(response, filename) {
-  if (!/^[a-z]+-[0-9a-f-]+\.(png|jpg|webp|glb|gltf)$/.test(filename))
+export async function serveMedia(response, filename, request) {
+  if (!/^[a-z]+-[0-9a-f-]+\.(png|jpg|webp|glb|gltf|mp3)$/.test(filename))
     return json(response, 404, { error: 'not_found' });
   try {
     const file = await readFile(path.join(dataDir, filename));
     const ext = filename.split('.').at(-1);
-    response.writeHead(200, {
+    const range = ext === 'mp3' && /^bytes=(\d+)-(\d*)$/.exec(request?.headers.range || '');
+    const start = range ? Number(range[1]) : 0;
+    const end = range && range[2] ? Math.min(Number(range[2]), file.length - 1) : file.length - 1;
+    if (start >= file.length || end < start) {
+      response.writeHead(416, { 'content-range': `bytes */${file.length}` });
+      response.end();
+      return;
+    }
+    response.writeHead(range ? 206 : 200, {
       'content-type': {
         png: 'image/png',
         jpg: 'image/jpeg',
         webp: 'image/webp',
         glb: 'model/gltf-binary',
         gltf: 'model/gltf+json',
+        mp3: 'audio/mpeg',
       }[ext],
       'cache-control': 'public, max-age=86400',
       'x-content-type-options': 'nosniff',
+      'content-length': end - start + 1,
+      ...(ext === 'mp3' ? { 'accept-ranges': 'bytes' } : {}),
+      ...(range ? { 'content-range': `bytes ${start}-${end}/${file.length}` } : {}),
     });
-    response.end(file);
+    response.end(file.subarray(start, end + 1));
   } catch {
     json(response, 404, { error: 'not_found' });
   }
@@ -268,6 +280,22 @@ async function requireSeat(redis, playerId, stationId) {
 
 export async function contentRoutes(pool, redis, request, response, route) {
   const method = request.method;
+  const publicProfile = /^\/api\/players\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(route);
+  if (publicProfile && method === 'GET') {
+    const result = await pool.query(
+      `SELECT p.id,p.nickname,p.fullname,p.avatar_url,p.online_seconds,p.created_at,
+        (SELECT count(*)::int FROM art_images a WHERE a.player_id=p.id AND a.deleted_at IS NULL) AS uploads,
+        (SELECT count(*)::int FROM art_votes v JOIN art_images a ON a.id=v.image_id WHERE a.player_id=p.id AND v.vote=1) AS likes,
+        (SELECT name FROM artist_levels WHERE min_uploads <=
+          (SELECT count(*) FROM art_images a WHERE a.player_id=p.id) AND min_likes <=
+          (SELECT count(*) FROM art_votes v JOIN art_images a ON a.id=v.image_id WHERE a.player_id=p.id AND v.vote=1)
+          ORDER BY level DESC LIMIT 1) AS badge
+       FROM players p WHERE p.id=$1`,
+      [publicProfile[1]],
+    );
+    if (!result.rowCount) throw error('player_not_found', 404);
+    return json(response, 200, { profile: result.rows[0] });
+  }
   if (route === '/api/leaderboard' && method === 'GET') {
     const [rich, donors, art, board] = await Promise.all([
       pool.query(
@@ -277,7 +305,7 @@ export async function contentRoutes(pool, redis, request, response, route) {
         'SELECT nickname,avatar_url,donated_seconds FROM players ORDER BY donated_seconds DESC LIMIT 5',
       ),
       pool.query(
-        `SELECT a.id,a.image_url,a.title,a.station_id,p.nickname,p.avatar_url,count(v.player_id) FILTER (WHERE v.vote=1)::int AS likes FROM art_images a JOIN players p ON p.id=a.player_id LEFT JOIN art_votes v ON v.image_id=a.id WHERE a.deleted_at IS NULL GROUP BY a.id,p.id ORDER BY likes DESC,a.created_at DESC LIMIT 10`,
+        `SELECT a.id,a.player_id,a.image_url,a.title,a.station_id,p.nickname,p.avatar_url,count(v.player_id) FILTER (WHERE v.vote=1)::int AS likes FROM art_images a JOIN players p ON p.id=a.player_id LEFT JOIN art_votes v ON v.image_id=a.id WHERE a.deleted_at IS NULL GROUP BY a.id,p.id ORDER BY likes DESC,a.created_at DESC LIMIT 10`,
       ),
       pool.query('SELECT background_url,background_color FROM board_settings WHERE id=1'),
     ]);
@@ -293,7 +321,7 @@ export async function contentRoutes(pool, redis, request, response, route) {
           stationId,
         ]),
         pool.query(
-          `SELECT a.id,a.image_url,a.title,a.created_at,p.nickname,p.avatar_url,count(v.player_id) FILTER (WHERE v.vote=1)::int AS likes,count(v.player_id) FILTER (WHERE v.vote=-1)::int AS unlikes FROM art_images a JOIN players p ON p.id=a.player_id LEFT JOIN art_votes v ON v.image_id=a.id WHERE a.station_id=$1 AND a.deleted_at IS NULL GROUP BY a.id,p.id ORDER BY a.created_at DESC`,
+          `SELECT a.id,a.player_id,a.station_id,a.image_url,a.title,a.created_at,p.nickname,p.avatar_url,count(v.player_id) FILTER (WHERE v.vote=1)::int AS likes,count(v.player_id) FILTER (WHERE v.vote=-1)::int AS unlikes FROM art_images a JOIN players p ON p.id=a.player_id LEFT JOIN art_votes v ON v.image_id=a.id WHERE a.station_id=$1 AND a.deleted_at IS NULL GROUP BY a.id,p.id ORDER BY a.created_at DESC`,
           [stationId],
         ),
       ]);
