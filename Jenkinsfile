@@ -1,5 +1,5 @@
 pipeline {
-  agent { label 'netverse-docker' }
+  agent any
   options {
     skipDefaultCheckout(true)
     timestamps()
