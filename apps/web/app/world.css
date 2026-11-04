@@ -1,7 +1,7 @@
 .main-tabs {
   position: absolute;
   z-index: 2;
-  top: 101px;
+  top: 68px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -57,7 +57,7 @@
 .pc-panel {
   left: 50%;
   right: auto;
-  top: 149px;
+  top: 116px;
   bottom: 55px;
   transform: translateX(-50%);
   width: min(1120px, calc(100vw - 520px));
@@ -264,6 +264,43 @@
   background: #3f355f;
   color: #e8ddff;
 }
+.topbar {
+  height: 58px;
+  padding: 0 24px;
+}
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  font-size: 23px;
+}
+.brand strong { font-size: 13px; }
+.brand small { display: none; }
+.room-tag, .connection { padding: 7px 10px; font-size: 9px; }
+.toast { top: 69px; }
+.pc-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #443460;
+  border-bottom: 1px solid #b49bdf77;
+  color: #fff;
+  font-size: 12px;
+}
+.pc-notice button { border: 0; background: transparent; color: #fff; font-size: 18px; }
+.browser-external {
+  align-self: flex-start;
+  color: #aee8dc;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+@media (max-width: 850px) {
+  .topbar { height: 52px; padding: 0 12px; }
+  .main-tabs { top: 59px; }
+  .pc-panel, .social-panel, .ranking-panel { top: 108px; }
+  .pc-panel { width: calc(100vw - 24px); }
+}
 .drawing-modal,
 .modal-backdrop {
   position: fixed;
@@ -303,7 +340,7 @@
 .ranking-panel {
   position: absolute;
   z-index: 2;
-  top: 149px;
+  top: 116px;
   bottom: 55px;
   left: 50%;
   transform: translateX(-50%);

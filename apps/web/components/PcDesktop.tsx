@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { api, readImage, type ArtImage } from '@/lib/api';
+import { api, type ArtImage } from '@/lib/api';
+import { compressDesktopImage } from '@/lib/desktop-image';
+import { embeddableUrl } from '@/lib/embed-url';
 
 type State = { wallpaper_url?: string; browser_url?: string };
 type Props = {
   stationId: number;
   seconds: number;
-  onNotice: (text: string) => void;
+  onAlbumChange: () => void;
   onStand: () => void;
 };
 const formatTime = (seconds: number) =>
@@ -17,21 +19,7 @@ const formatTime = (seconds: number) =>
     .padStart(2, '0')}:${Math.floor(seconds % 60)
     .toString()
     .padStart(2, '0')}`;
-function embeddableUrl(raw: string): string {
-  const parsed = new URL(raw);
-  if (parsed.protocol !== 'https:') throw new Error('Chỉ hỗ trợ URL HTTPS.');
-  const videoId =
-    parsed.hostname === 'youtu.be'
-      ? parsed.pathname.slice(1)
-      : ['youtube.com', 'www.youtube.com'].includes(parsed.hostname) && parsed.pathname === '/watch'
-        ? parsed.searchParams.get('v')
-        : null;
-  if (videoId && /^[\w-]{11}$/.test(videoId))
-    return `https://www.youtube-nocookie.com/embed/${videoId}`;
-  return parsed.href;
-}
-
-export default function PcDesktop({ stationId, seconds, onNotice, onStand }: Props) {
+export default function PcDesktop({ stationId, seconds, onAlbumChange, onStand }: Props) {
   const [tab, setTab] = useState<'desktop' | 'browser' | 'album' | 'top'>('desktop');
   const [state, setState] = useState<State>({});
   const [images, setImages] = useState<ArtImage[]>([]);
@@ -39,6 +27,7 @@ export default function PcDesktop({ stationId, seconds, onNotice, onStand }: Pro
   const [url, setUrl] = useState('https://www.wikipedia.org');
   const [title, setTitle] = useState('');
   const [drawing, setDrawing] = useState(false);
+  const [notice, setNotice] = useState('');
   const canvas = useRef<HTMLCanvasElement>(null);
   const painting = useRef(false);
 
@@ -55,8 +44,8 @@ export default function PcDesktop({ stationId, seconds, onNotice, onStand }: Pro
         setImages(result.images);
         setUrl(result.state.browser_url || 'https://www.wikipedia.org');
       })
-      .catch(() => onNotice('Không tải được dữ liệu PC.'));
-  }, [stationId, onNotice]);
+      .catch(() => setNotice('Không tải được dữ liệu PC.'));
+  }, [stationId]);
   useEffect(() => {
     if (tab === 'top')
       api<{ art: ArtImage[] }>('/api/leaderboard')
@@ -76,21 +65,26 @@ export default function PcDesktop({ stationId, seconds, onNotice, onStand }: Pro
 
   const uploadWallpaper = async (file: File) => {
     try {
-      await api(`/api/pc/${stationId}`, { wallpaper: await readImage(file) });
+      await api(`/api/pc/${stationId}`, {
+        wallpaper: await compressDesktopImage(file),
+        albumTitle: file.name.replace(/\.[^.]+$/, '').slice(0, 80) || 'Hình nền PC',
+      });
       await refresh();
-      onNotice('Đã lưu hình nền cho máy này.');
+      onAlbumChange();
+      setNotice('Đã nén ảnh, lưu hình nền và thêm vào album của máy.');
     } catch (error) {
-      onNotice((error as Error).message);
+      setNotice((error as Error).message);
     }
   };
   const uploadArt = async (file: File) => {
     try {
-      await api('/api/art/upload', { stationId, title, image: await readImage(file) });
+      await api('/api/art/upload', { stationId, title, image: await compressDesktopImage(file) });
       setTitle('');
       await refresh();
-      onNotice('Đã đăng ảnh vào album của máy.');
+      onAlbumChange();
+      setNotice('Đã nén và đăng ảnh vào album của máy.');
     } catch (error) {
-      onNotice((error as Error).message);
+      setNotice((error as Error).message);
     }
   };
   const vote = async (id: string, value: number) => {
@@ -99,7 +93,7 @@ export default function PcDesktop({ stationId, seconds, onNotice, onStand }: Pro
       await refresh();
       if (tab === 'top') setTop((current) => current.filter((item) => item.id !== id));
     } catch (error) {
-      onNotice((error as Error).message);
+      setNotice((error as Error).message);
     }
   };
   const navigate = async (event: React.FormEvent) => {
@@ -110,7 +104,7 @@ export default function PcDesktop({ stationId, seconds, onNotice, onStand }: Pro
       setState((current) => ({ ...current, browser_url: destination }));
       setUrl(destination);
     } catch (error) {
-      onNotice((error as Error).message);
+      setNotice((error as Error).message);
     }
   };
   const draw = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -132,12 +126,16 @@ export default function PcDesktop({ stationId, seconds, onNotice, onStand }: Pro
   const saveDrawing = async () => {
     if (!canvas.current) return;
     try {
-      await api(`/api/pc/${stationId}`, { wallpaper: canvas.current.toDataURL('image/png') });
+      await api(`/api/pc/${stationId}`, {
+        wallpaper: canvas.current.toDataURL('image/webp', 0.82),
+        albumTitle: 'Tranh vẽ trên PC',
+      });
       await refresh();
       setDrawing(false);
-      onNotice('Đã lưu tranh làm hình nền.');
+      onAlbumChange();
+      setNotice('Đã lưu tranh làm hình nền và thêm vào album.');
     } catch (error) {
-      onNotice((error as Error).message);
+      setNotice((error as Error).message);
     }
   };
 
@@ -196,6 +194,12 @@ export default function PcDesktop({ stationId, seconds, onNotice, onStand }: Pro
           </button>
         ))}
       </nav>
+      {notice && (
+        <div className="pc-notice" role="status">
+          <span>{notice}</span>
+          <button onClick={() => setNotice('')} aria-label="Đóng thông báo PC">×</button>
+        </div>
+      )}
       {tab === 'desktop' && (
         <div
           className="desktop-screen"
@@ -216,7 +220,7 @@ export default function PcDesktop({ stationId, seconds, onNotice, onStand }: Pro
           </div>
           <div className="desktop-tools">
             <h2>NETVERSE OS</h2>
-            <p>Hình nền này sẽ ở lại máy khi bạn rời ghế.</p>
+            <p>Hình nền sẽ ở lại máy và ảnh tự động xuất hiện trong album PC.</p>
             <label className="action-button">
               Tải ảnh làm hình nền
               <input
@@ -249,14 +253,22 @@ export default function PcDesktop({ stationId, seconds, onNotice, onStand }: Pro
             <button>Đi</button>
           </form>
           <p>
-            Chỉ hiển thị trang cho phép nhúng. Một số website hoặc dịch vụ phim có thể chặn iframe.
+            Dán link video YouTube/TikTok để phát trong PC. Báo điện tử chỉ hiện nếu trang cho phép
+            nhúng. Nếu màn hình trống hoặc báo chặn, dùng nút Mở ngoài.
           </p>
+          {state.browser_url && (
+            <a className="browser-external" href={state.browser_url} target="_blank" rel="noopener noreferrer">
+              Mở ngoài ↗
+            </a>
+          )}
           {state.browser_url && (
             <iframe
               title="Trình duyệt NETVERSE"
               src={state.browser_url}
-              sandbox="allow-forms allow-scripts allow-same-origin"
-              referrerPolicy="no-referrer"
+              sandbox="allow-forms allow-scripts allow-same-origin allow-popups"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
             />
           )}
         </div>

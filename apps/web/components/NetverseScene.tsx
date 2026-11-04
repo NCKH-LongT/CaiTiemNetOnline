@@ -18,6 +18,8 @@ export type RemotePlayer = {
   fullname?: string;
   avatarUrl?: string | null;
   balanceSeconds?: number;
+  onlineSeconds?: number;
+  badge?: string | null;
 };
 
 type Props = {
@@ -29,12 +31,17 @@ type Props = {
   startPosition: Point3;
   kneeling: boolean;
   canEnterCafe: boolean;
+  cameraEnabled: boolean;
   localName?: string;
   localFullname?: string;
   localAvatarUrl?: string | null;
+  localBalanceSeconds?: number;
+  localOnlineSeconds?: number;
+  localBadge?: string | null;
   leaderboard?: {
     rich: { nickname: string; balance_seconds: number }[];
     donors: { nickname: string; donated_seconds: number }[];
+    board?: { background_url: string | null; background_color: string };
   };
   onNearbyChange: (stationId: number | null) => void;
   onPositionChange: (x: number, z: number) => void;
@@ -46,46 +53,63 @@ function AvatarTag({
   name,
   fullname,
   avatarUrl,
+  balanceSeconds = 0,
+  onlineSeconds = 0,
+  badge,
 }: {
   name: string;
   fullname?: string;
   avatarUrl?: string | null;
+  balanceSeconds?: number;
+  onlineSeconds?: number;
+  badge?: string | null;
 }) {
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   useEffect(() => {
+    let active = true;
+    let portraitImage: HTMLImageElement | null = null;
     const canvas = document.createElement('canvas');
     canvas.width = 512;
-    canvas.height = 128;
+    canvas.height = 180;
     const context = canvas.getContext('2d');
     if (!context) return;
     const paint = (portrait?: HTMLImageElement) => {
-      context.clearRect(0, 0, 512, 128);
+      if (!active) return;
+      context.clearRect(0, 0, 512, 180);
       context.fillStyle = 'rgba(25,22,45,0.88)';
       context.beginPath();
-      context.roundRect(0, 0, 512, 128, 22);
+      context.roundRect(0, 0, 512, 180, 22);
       context.fill();
       if (portrait) {
         context.save();
         context.beginPath();
-        context.arc(60, 64, 44, 0, Math.PI * 2);
+        context.arc(60, 88, 44, 0, Math.PI * 2);
         context.clip();
-        context.drawImage(portrait, 16, 20, 88, 88);
+        context.drawImage(portrait, 16, 44, 88, 88);
         context.restore();
       } else {
         context.fillStyle = '#7661b8';
         context.beginPath();
-        context.arc(60, 64, 44, 0, Math.PI * 2);
+        context.arc(60, 88, 44, 0, Math.PI * 2);
         context.fill();
         context.fillStyle = '#fff';
         context.font = 'bold 44px sans-serif';
-        context.fillText(name.slice(0, 1).toUpperCase(), 45, 79);
+        context.fillText(name.slice(0, 1).toUpperCase(), 45, 103);
       }
       context.fillStyle = '#fff';
       context.font = 'bold 29px sans-serif';
-      context.fillText(name.slice(0, 20), 122, 61);
+      context.fillText(name.slice(0, 20), 122, 45);
       context.fillStyle = '#b9acd4';
       context.font = '20px sans-serif';
-      context.fillText((fullname || '').slice(0, 29), 122, 92);
+      context.fillText((fullname || '').slice(0, 29), 122, 72);
+      context.fillStyle = '#9debd2';
+      context.font = '19px sans-serif';
+      context.fillText(`Còn ${Math.floor(balanceSeconds / 60)}p · Online ${Math.floor(onlineSeconds / 3600)}h ${Math.floor(onlineSeconds % 3600 / 60)}p`, 122, 110);
+      if (badge && badge !== 'Tân binh') {
+        context.fillStyle = '#f1d18b';
+        context.font = 'bold 19px sans-serif';
+        context.fillText(`✦ ${badge.slice(0, 25)}`, 122, 145);
+      }
       const next = new THREE.CanvasTexture(canvas);
       setTexture((old) => {
         old?.dispose();
@@ -95,17 +119,21 @@ function AvatarTag({
     paint();
     if (avatarUrl) {
       const image = new Image();
+      portraitImage = image;
       image.onload = () => paint(image);
       image.src = avatarUrl;
     }
-    return () =>
+    return () => {
+      active = false;
+      if (portraitImage) portraitImage.onload = null;
       setTexture((old) => {
         old?.dispose();
         return null;
       });
-  }, [name, fullname, avatarUrl]);
+    };
+  }, [name, fullname, avatarUrl, balanceSeconds, onlineSeconds, badge]);
   return texture ? (
-    <sprite position={[0, 2.25, 0]} scale={[1.9, 0.48, 1]}>
+    <sprite position={[0, 2.45, 0]} scale={[2.2, 0.77, 1]}>
       <spriteMaterial map={texture} transparent depthTest={false} />
     </sprite>
   ) : null;
@@ -133,6 +161,32 @@ function WorldAsset({ object }: { object: WorldObject }) {
   );
 }
 
+function BoardBackground({ url }: { url: string }) {
+  const source = useLoader(THREE.TextureLoader, url);
+  const texture = useMemo(() => {
+    const copy = source.clone();
+    const image = source.image as HTMLImageElement;
+    const aspect = image.width / image.height;
+    if (aspect > 2) {
+      copy.repeat.set(2 / aspect, 1);
+      copy.offset.set((1 - 2 / aspect) / 2, 0);
+    } else {
+      copy.repeat.set(1, aspect / 2);
+      copy.offset.set(0, (1 - aspect / 2) / 2);
+    }
+    copy.colorSpace = THREE.SRGBColorSpace;
+    copy.needsUpdate = true;
+    return copy;
+  }, [source]);
+  useEffect(() => () => texture.dispose(), [texture]);
+  return (
+    <mesh position={[0, 0, 0.113]}>
+      <planeGeometry args={[8, 4]} />
+      <meshBasicMaterial map={texture} />
+    </mesh>
+  );
+}
+
 function LeaderboardBoard({ data }: { data?: Props['leaderboard'] }) {
   const texture = useMemo(() => {
     const canvas = document.createElement('canvas');
@@ -140,7 +194,7 @@ function LeaderboardBoard({ data }: { data?: Props['leaderboard'] }) {
     canvas.height = 512;
     const context = canvas.getContext('2d');
     if (!context) return null;
-    context.fillStyle = '#231c3c';
+    context.fillStyle = 'rgba(15,12,30,0.72)';
     context.fillRect(0, 0, 1024, 512);
     context.strokeStyle = '#a480f0';
     context.lineWidth = 14;
@@ -184,12 +238,19 @@ function LeaderboardBoard({ data }: { data?: Props['leaderboard'] }) {
     <group position={[0, 3.2, -22.5]}>
       <mesh>
         <boxGeometry args={[8.3, 4.3, 0.2]} />
-        <meshStandardMaterial color="#171228" />
+        <meshStandardMaterial color={data?.board?.background_color || '#231c3c'} />
       </mesh>
+      {data?.board?.background_url && (
+        <AssetErrorBoundary>
+          <Suspense fallback={null}>
+            <BoardBackground url={data.board.background_url} />
+          </Suspense>
+        </AssetErrorBoundary>
+      )}
       {texture && (
-        <mesh position={[0, 0, 0.12]}>
+        <mesh position={[0, 0, 0.125]}>
           <planeGeometry args={[8, 4]} />
-          <meshBasicMaterial map={texture} />
+          <meshBasicMaterial map={texture} transparent />
         </mesh>
       )}
     </group>
@@ -205,6 +266,9 @@ function Avatar({
   name,
   fullname,
   avatarUrl,
+  balanceSeconds,
+  onlineSeconds,
+  badge,
 }: {
   position: Point3;
   seated?: boolean;
@@ -214,6 +278,9 @@ function Avatar({
   name?: string;
   fullname?: string;
   avatarUrl?: string | null;
+  balanceSeconds?: number;
+  onlineSeconds?: number;
+  badge?: string | null;
 }) {
   const body = useRef<THREE.Mesh>(null);
   const leftLeg = useRef<THREE.Mesh>(null);
@@ -250,7 +317,7 @@ function Avatar({
               <meshStandardMaterial color="#252837" />
             </mesh>
           ))}
-      {name && <AvatarTag name={name} fullname={fullname} avatarUrl={avatarUrl} />}
+      {name && <AvatarTag name={name} fullname={fullname} avatarUrl={avatarUrl} balanceSeconds={balanceSeconds} onlineSeconds={onlineSeconds} badge={badge} />}
     </group>
   );
 }
@@ -299,10 +366,12 @@ function RoomShell() {
 }
 
 function World(props: Props) {
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
   const avatarGroup = useRef<THREE.Group>(null);
   const avatarPosition = useRef<Point3>([...props.startPosition]);
   const heading = useRef(Math.PI);
+  const cameraYaw = useRef(Math.PI);
+  const cameraPitch = useRef(0);
   const visibleCell = useRef('');
   const [visibleStations, setVisibleStations] = useState(() =>
     stations.filter(
@@ -320,7 +389,30 @@ function World(props: Props) {
   const lastMoveSend = useRef(0);
   const target = useRef(new THREE.Vector3());
   const cameraTarget = useRef(new THREE.Vector3());
+  const cameraLook = useRef(new THREE.Vector3(props.startPosition[0], 1.2, props.startPosition[2] - 2));
   const seatedStation = props.seatedAt ? stations[props.seatedAt - 1] : null;
+  useEffect(() => {
+    const element = gl.domElement;
+    if (!props.cameraEnabled) {
+      if (document.pointerLockElement === element) document.exitPointerLock();
+      return;
+    }
+    const lock = () => {
+      if (document.pointerLockElement !== element) element.requestPointerLock().catch(() => {});
+    };
+    const rotate = (event: MouseEvent) => {
+      if (document.pointerLockElement !== element) return;
+      cameraYaw.current -= event.movementX * 0.0025;
+      cameraPitch.current = THREE.MathUtils.clamp(cameraPitch.current + event.movementY * 0.003, -0.7, 0.8);
+    };
+    element.addEventListener('pointerdown', lock);
+    document.addEventListener('mousemove', rotate);
+    return () => {
+      element.removeEventListener('pointerdown', lock);
+      document.removeEventListener('mousemove', rotate);
+      if (document.pointerLockElement === element) document.exitPointerLock();
+    };
+  }, [gl, props.cameraEnabled]);
   useEffect(() => {
     const load = () =>
       fetch('/api/world')
@@ -336,14 +428,16 @@ function World(props: Props) {
     const position = avatarPosition.current;
     movementAmount.current = 0;
     if (!seatedStation && !props.kneeling) {
-      let dx =
+      const strafe =
         Number(props.heldKeys.current.has('d') || props.heldKeys.current.has('arrowright')) -
         Number(props.heldKeys.current.has('a') || props.heldKeys.current.has('arrowleft'));
-      let dz =
-        Number(props.heldKeys.current.has('s') || props.heldKeys.current.has('arrowdown')) -
-        Number(props.heldKeys.current.has('w') || props.heldKeys.current.has('arrowup'));
-      if (dx || dz) {
+      const forward =
+        Number(props.heldKeys.current.has('w') || props.heldKeys.current.has('arrowup')) -
+        Number(props.heldKeys.current.has('s') || props.heldKeys.current.has('arrowdown'));
+      if (strafe || forward) {
         movementAmount.current = props.heldKeys.current.has('shift') ? 1.7 : 1;
+        let dx = Math.sin(cameraYaw.current) * forward + Math.cos(cameraYaw.current) * strafe;
+        let dz = Math.cos(cameraYaw.current) * forward - Math.sin(cameraYaw.current) * strafe;
         const length = Math.hypot(dx, dz);
         dx /= length;
         dz /= length;
@@ -354,7 +448,9 @@ function World(props: Props) {
         const z = canMoveTo(x, nextZ) && (props.canEnterCafe || nextZ >= 25) ? nextZ : position[2];
         avatarPosition.current = [x, 0, z];
         props.onPositionChange(x, z);
-        heading.current = Math.atan2(dx, dz);
+        const desiredHeading = Math.atan2(dx, dz);
+        const difference = Math.atan2(Math.sin(desiredHeading - heading.current), Math.cos(desiredHeading - heading.current));
+        heading.current += difference * Math.min(1, delta * 8);
         if (avatarGroup.current) avatarGroup.current.rotation.y = heading.current;
         const now = performance.now();
         if (now - lastMoveSend.current > 100) {
@@ -395,18 +491,19 @@ function World(props: Props) {
       cameraTarget.current.set(...seatedStation.screenAnchor);
     } else {
       target.current.set(
-        current[0] - Math.sin(heading.current) * 3.3,
-        2.6,
-        current[2] - Math.cos(heading.current) * 3.3,
+        current[0] - Math.sin(cameraYaw.current) * 5.2,
+        3.1 + cameraPitch.current * 2,
+        current[2] - Math.cos(cameraYaw.current) * 5.2,
       );
       cameraTarget.current.set(
-        current[0] + Math.sin(heading.current) * 2,
-        1.2,
-        current[2] + Math.cos(heading.current) * 2,
+        current[0] + Math.sin(cameraYaw.current) * 2,
+        1.25 - cameraPitch.current * 0.7,
+        current[2] + Math.cos(cameraYaw.current) * 2,
       );
     }
     camera.position.lerp(target.current, Math.min(1, delta * 3.2));
-    camera.lookAt(cameraTarget.current);
+    cameraLook.current.lerp(cameraTarget.current, Math.min(1, delta * 5));
+    camera.lookAt(cameraLook.current);
   });
 
   return (
@@ -451,6 +548,9 @@ function World(props: Props) {
           name={seatedStation ? undefined : props.localName}
           fullname={props.localFullname}
           avatarUrl={props.localAvatarUrl}
+          balanceSeconds={props.localBalanceSeconds}
+          onlineSeconds={props.localOnlineSeconds}
+          badge={props.localBadge}
         />
       </group>
       {props.remotePlayers
@@ -470,6 +570,9 @@ function World(props: Props) {
               name={player.name}
               fullname={player.fullname}
               avatarUrl={player.avatarUrl}
+              balanceSeconds={player.balanceSeconds}
+              onlineSeconds={player.onlineSeconds}
+              badge={player.badge}
             />
           );
         })}

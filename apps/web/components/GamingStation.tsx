@@ -1,6 +1,8 @@
 'use client';
 
 import type { ThreeEvent } from '@react-three/fiber';
+import { useEffect, useMemo } from 'react';
+import * as THREE from 'three';
 import type { Station } from '@/lib/stations';
 
 type Props = {
@@ -13,6 +15,22 @@ type Props = {
 export default function GamingStation({ station, active, occupied, onScreenClick }: Props) {
   const side = station.side;
   const [x, , z] = station.position;
+  const numberTexture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 128;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.fillStyle = '#f2d891';
+    context.fillRect(0, 0, 256, 128);
+    context.fillStyle = '#201b32';
+    context.font = 'bold 72px sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(String(station.stationId).padStart(3, '0'), 128, 68);
+    return new THREE.CanvasTexture(canvas);
+  }, [station.stationId]);
+  useEffect(() => () => numberTexture?.dispose(), [numberTexture]);
   const handleScreenClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
     onScreenClick(station.stationId);
@@ -69,6 +87,12 @@ export default function GamingStation({ station, active, occupied, onScreenClick
           <boxGeometry args={[0.12, 0.77, 0.58]} />
           <meshStandardMaterial color="#5547a6" />
         </mesh>
+        {numberTexture && (
+          <mesh position={[-side * 0.305, 0.87, 0]} rotation={[0, -side * Math.PI / 2, 0]}>
+            <planeGeometry args={[0.42, 0.2]} />
+            <meshBasicMaterial map={numberTexture} side={THREE.DoubleSide} />
+          </mesh>
+        )}
         <mesh position={[0, 0.21, 0]}>
           <cylinderGeometry args={[0.045, 0.045, 0.42, 6]} />
           <meshStandardMaterial color="#24232c" />

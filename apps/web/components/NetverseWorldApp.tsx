@@ -15,6 +15,7 @@ type Leaderboard = {
   rich: { nickname: string; balance_seconds: number }[];
   donors: { nickname: string; donated_seconds: number }[];
   art: ArtImage[];
+  board?: { background_url: string | null; background_color: string };
 };
 const formatMinutes = (seconds: number) => `${Math.floor(seconds / 60)} phút`;
 
@@ -33,6 +34,7 @@ export default function NetverseWorldApp() {
   const [players, setPlayers] = useState<RemotePlayer[]>([]);
   const [seats, setSeats] = useState<Record<number, string>>({});
   const [seconds, setSeconds] = useState(3600);
+  const [onlineSeconds, setOnlineSeconds] = useState(0);
   const [notice, setNotice] = useState('');
   const [mainTab, setMainTab] = useState<'world' | 'community' | 'rankings'>('world');
   const [chatTarget, setChatTarget] = useState<{
@@ -67,6 +69,7 @@ export default function NetverseWorldApp() {
         if (found) {
           setPlayer(found);
           setSeconds(found.balance_seconds);
+          setOnlineSeconds(found.online_seconds);
           position.current = [found.x, 0, found.z];
           loadChatMessages(found.id)
             .then(setMessages)
@@ -93,6 +96,11 @@ export default function NetverseWorldApp() {
   useEffect(() => {
     if (entered || mainTab === 'rankings') refreshLeaderboard();
   }, [entered, mainTab, refreshLeaderboard]);
+  useEffect(() => {
+    if (!entered) return;
+    const timer = setInterval(refreshLeaderboard, 30000);
+    return () => clearInterval(timer);
+  }, [entered, refreshLeaderboard]);
   useEffect(() => {
     if (!entered) return;
     const refresh = () =>
@@ -155,6 +163,10 @@ export default function NetverseWorldApp() {
       joined.onMessage('time', ({ seconds: amount }: { seconds: number }) => {
         setSeconds(amount);
         if (amount > 0) setKneeling(false);
+      });
+      joined.onMessage('player-presence', ({ id, onlineSeconds: total, balanceSeconds }: { id: string; onlineSeconds: number; balanceSeconds: number }) => {
+        setPlayers((current) => current.map((item) => item.id === id ? { ...item, onlineSeconds: total, balanceSeconds } : item));
+        if (id === joined?.sessionId) setOnlineSeconds(total);
       });
       joined.onMessage('expired', ({ x, z }: { x: number; z: number }) => {
         position.current = [x, 0, z];
@@ -253,6 +265,7 @@ export default function NetverseWorldApp() {
       const result = await api<{ player: Player }>(`/api/auth/${authMode}`, form);
       setPlayer(result.player);
       setSeconds(result.player.balance_seconds);
+      setOnlineSeconds(result.player.online_seconds);
       position.current = [result.player.x, 0, result.player.z];
       loadChatMessages(result.player.id)
         .then(setMessages)
@@ -350,9 +363,13 @@ export default function NetverseWorldApp() {
           startPosition={sceneStart}
           kneeling={kneeling}
           canEnterCafe={seconds > 0}
+          cameraEnabled={entered && mainTab === 'world' && !seatedAt}
           localName={player?.nickname}
           localFullname={player?.fullname}
           localAvatarUrl={player?.avatar_url}
+          localBalanceSeconds={seconds}
+          localOnlineSeconds={onlineSeconds}
+          localBadge={artist?.level?.name}
           leaderboard={leaderboard}
           onNearbyChange={setNearbyId}
           onPositionChange={(x, z) => {
@@ -429,6 +446,10 @@ export default function NetverseWorldApp() {
               <b>{formatMinutes(seconds)}</b>
             </div>
             <div className="stat-row">
+              <span>Đã online</span>
+              <b>{Math.floor(onlineSeconds / 3600)}h {Math.floor(onlineSeconds % 3600 / 60)}p</b>
+            </div>
+            <div className="stat-row">
               <span>Máy đang dùng</span>
               <b>
                 {Object.keys(seats).length}/{stations.length}
@@ -467,6 +488,10 @@ export default function NetverseWorldApp() {
                 <span>Chạy</span>
               </div>
               <div>
+                <kbd>CHUỘT</kbd>
+                <span>Nhấp vào game để xoay góc nhìn · Esc để thả</span>
+              </div>
+              <div>
                 <kbd>E</kbd>
                 <span>Ngồi / đứng</span>
               </div>
@@ -493,7 +518,12 @@ export default function NetverseWorldApp() {
             <PcDesktop
               stationId={seatedAt}
               seconds={seconds}
-              onNotice={setNotice}
+              onAlbumChange={() => {
+                room.current?.send('profile-refresh');
+                api<{ uploads: number; likes: number; level: { name: string } | null }>('/api/player/artist')
+                  .then(setArtist)
+                  .catch(() => {});
+              }}
               onStand={stand}
             />
           )}
@@ -768,7 +798,7 @@ export default function NetverseWorldApp() {
                 </form>
               </>
             )}
-            <small>WASD di chuyển · E tương tác · Shift chạy</small>
+            <small>Nhấp vào game để xoay camera · WASD di chuyển · E tương tác · Shift chạy</small>
           </section>
         </div>
       )}

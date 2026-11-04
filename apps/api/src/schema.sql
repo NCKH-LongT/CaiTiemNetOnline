@@ -9,8 +9,10 @@ CREATE TABLE IF NOT EXISTS players (
   z real NOT NULL DEFAULT 23,
   balance_seconds integer NOT NULL DEFAULT 3600 CHECK (balance_seconds >= 0),
   donated_seconds integer NOT NULL DEFAULT 0,
+  online_seconds integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE players ADD COLUMN IF NOT EXISTS online_seconds integer NOT NULL DEFAULT 0;
 CREATE UNIQUE INDEX IF NOT EXISTS players_username_unique ON players (lower(username));
 CREATE UNIQUE INDEX IF NOT EXISTS players_nickname_unique ON players (lower(nickname));
 CREATE TABLE IF NOT EXISTS player_sessions (
@@ -86,6 +88,12 @@ CREATE TABLE IF NOT EXISTS artist_levels (
   min_uploads integer NOT NULL,
   min_likes integer NOT NULL
 );
+CREATE TABLE IF NOT EXISTS board_settings (
+  id integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  background_url text,
+  background_color text NOT NULL DEFAULT '#231c3c'
+);
+INSERT INTO board_settings (id) VALUES (1) ON CONFLICT DO NOTHING;
 INSERT INTO artist_levels (level, name, min_uploads, min_likes) VALUES
   (1, 'Tân binh', 0, 0),
   (2, 'Họa sĩ tập sự', 3, 10),

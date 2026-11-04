@@ -8,6 +8,7 @@ export type Player = {
   z: number;
   balance_seconds: number;
   donated_seconds: number;
+  online_seconds: number;
 };
 
 export type ArtImage = {

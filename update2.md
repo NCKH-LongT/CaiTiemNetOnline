@@ -1,0 +1,9 @@
+- tôi muốn cách điều khiển như game GTA dùng chuột để xoay góc camera, còn bàn phím để di chuyển tới lui, hoặc nó sẽ xoay dần chứ ko có chớp 1 cái ra đăng sau nhìn rất kì. 
+- các ảnh được up lên desktop sẽ được lưu vào album của pc đó
+- các thông báo upload không được thì nên hiển thị trong desktop pc đó, chứ ko phải thông báo bên ngoài màn hình của user. ngoài ra cần nén ảnh lại để giảm dung lượng trước khi upload lên
+- trên bảng tên của nhân vật user có tổng thời gian còn lại, đã online tiệm net bao lâu, và huy hiệu thành tích nếu có. 
+- ở header ngoài màn hình cho nhỏ gọn lại để tối ưu không gian bên trong game. 
+- cho camera ở góc xa hơn 1 tí để thấy rộng hơn
+- background bảng vàng sẽ có thể update trên admin. 
+- tôi muốn desktop trên pc ảo có thể mở được youtube, báo, tiktok thì làm như thế nào. 
+- tôi muốn ở trên đầu các máy hoặc ở mặt sau ghế sẽ có số thứ tự của máy. 

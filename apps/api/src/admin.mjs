@@ -1,7 +1,7 @@
 import { mkdir, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
-import { adminSession, body, json } from './service.mjs';
+import { adminSession, body, json, storeImage } from './service.mjs';
 import { cookie, hashToken, newToken, setCookie } from './security.mjs';
 
 const dataDir = process.env.DATA_DIR || '/app/data';
@@ -120,6 +120,31 @@ export async function adminRoutes(pool, redis, request, response, route) {
   }
   if (!route.startsWith('/api/admin/')) return false;
   if (!(await adminSession(pool, request))) throw fail('admin_required', 401);
+  if (route === '/api/admin/board' && method === 'GET') {
+    const result = await pool.query('SELECT background_url,background_color FROM board_settings WHERE id=1');
+    return json(response, 200, { board: result.rows[0] });
+  }
+  if (route === '/api/admin/board' && method === 'POST') {
+    const data = await body(request);
+    const color = String(data.backgroundColor || '');
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) throw fail('invalid_board_color');
+    const previous = await pool.query('SELECT background_url FROM board_settings WHERE id=1');
+    const image = data.image ? await storeImage(data.image, 'board') : null;
+    let result;
+    try {
+      result = await pool.query(
+        `UPDATE board_settings SET background_color=$1,background_url=CASE WHEN $2::boolean THEN NULL ELSE COALESCE($3,background_url) END WHERE id=1 RETURNING background_url,background_color`,
+        [color, data.removeImage === true, image],
+      );
+    } catch (cause) {
+      if (image) await unlink(path.join(dataDir, path.basename(image))).catch(() => {});
+      throw cause;
+    }
+    const oldImage = previous.rows[0]?.background_url;
+    if (oldImage && oldImage !== result.rows[0].background_url)
+      await unlink(path.join(dataDir, path.basename(oldImage))).catch(() => {});
+    return json(response, 200, { board: result.rows[0] });
+  }
   if (route === '/api/admin/assets' && method === 'GET') {
     const result = await pool.query('SELECT * FROM asset_catalog ORDER BY created_at DESC');
     return json(response, 200, { assets: result.rows });

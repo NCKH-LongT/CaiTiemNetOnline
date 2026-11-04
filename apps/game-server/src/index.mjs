@@ -30,7 +30,12 @@ export class CafeRoom extends Room {
     const playerId = await redis.getDel(`netverse:ticket:${options.ticket}`);
     if (!playerId) throw new Error('invalid_ticket');
     const result = await pool.query(
-      'SELECT id,nickname,fullname,avatar_url,x,z,balance_seconds FROM players WHERE id=$1',
+      `SELECT p.id,p.nickname,p.fullname,p.avatar_url,p.x,p.z,p.balance_seconds,p.online_seconds,
+        (SELECT name FROM artist_levels WHERE min_uploads <=
+          (SELECT count(*) FROM art_images WHERE player_id=p.id) AND min_likes <=
+          (SELECT count(*) FROM art_votes v JOIN art_images a ON a.id=v.image_id WHERE a.player_id=p.id AND v.vote=1)
+          ORDER BY level DESC LIMIT 1) AS badge
+        FROM players p WHERE p.id=$1`,
       [playerId],
     );
     if (!result.rowCount) throw new Error('invalid_session');
@@ -68,10 +73,34 @@ export class CafeRoom extends Room {
     }
   }
 
+  async trackOnline(player) {
+    if (!pool || !player?.userId || player.trackingOnline) return;
+    const elapsed = Math.floor((Date.now() - player.lastOnlineAt) / 1000);
+    if (elapsed < 1) return;
+    player.trackingOnline = true;
+    try {
+      const result = await pool.query(
+        'UPDATE players SET online_seconds=online_seconds+$1 WHERE id=$2 RETURNING online_seconds',
+        [elapsed, player.userId],
+      );
+      player.lastOnlineAt += elapsed * 1000;
+      player.onlineSeconds = result.rows[0]?.online_seconds ?? player.onlineSeconds;
+      this.broadcast('player-presence', {
+        id: player.id,
+        onlineSeconds: player.onlineSeconds,
+        balanceSeconds: player.balanceSeconds,
+      });
+    } finally {
+      player.trackingOnline = false;
+    }
+  }
+
   onCreate() {
     this.clock.setInterval(() => {
       for (const player of this.players.values())
         if (player.seatedAt) this.charge(player).catch((error) => console.error('Timer:', error));
+      for (const player of this.players.values())
+        this.trackOnline(player).catch((error) => console.error('Online timer:', error));
       if (redis)
         for (const player of this.players.values())
           if (player.seatedAt && player.userId)
@@ -224,13 +253,19 @@ export class CafeRoom extends Room {
       const player = this.players.get(client.sessionId);
       if (!pool || !player?.userId) return;
       const result = await pool.query(
-        'SELECT nickname,fullname,avatar_url FROM players WHERE id=$1',
+        `SELECT p.nickname,p.fullname,p.avatar_url,
+          (SELECT name FROM artist_levels WHERE min_uploads <=
+            (SELECT count(*) FROM art_images WHERE player_id=p.id) AND min_likes <=
+            (SELECT count(*) FROM art_votes v JOIN art_images a ON a.id=v.image_id WHERE a.player_id=p.id AND v.vote=1)
+            ORDER BY level DESC LIMIT 1) AS badge
+          FROM players p WHERE p.id=$1`,
         [player.userId],
       );
       if (!result.rowCount) return;
       player.name = result.rows[0].nickname;
       player.fullname = result.rows[0].fullname;
       player.avatarUrl = result.rows[0].avatar_url;
+      player.badge = result.rows[0].badge;
       this.sendSnapshot();
     });
   }
@@ -248,6 +283,9 @@ export class CafeRoom extends Room {
       z: auth?.balance_seconds <= 0 ? 29 : (auth?.z ?? world.spawn[2]),
       seatedAt: null,
       balanceSeconds: auth?.balance_seconds ?? 3600,
+      onlineSeconds: auth?.online_seconds ?? 0,
+      badge: auth?.badge ?? null,
+      lastOnlineAt: Date.now(),
       lastMove: Date.now(),
     });
     this.broadcast('snapshot', this.snapshot(), { except: client });
@@ -256,6 +294,7 @@ export class CafeRoom extends Room {
   async onLeave(client) {
     const player = this.players.get(client.sessionId);
     if (player?.seatedAt) await this.charge(player);
+    if (player) await this.trackOnline(player);
     if (player?.seatedAt && redis) await redis.del(`netverse:seat:${player.seatedAt}`);
     if (player?.seatedAt) this.seats.delete(player.seatedAt);
     this.players.delete(client.sessionId);
@@ -269,7 +308,7 @@ export class CafeRoom extends Room {
   snapshot() {
     return {
       players: [...this.players.values()].map(
-        ({ id, userId, name, fullname, avatarUrl, x, z, seatedAt, balanceSeconds }) => ({
+        ({ id, userId, name, fullname, avatarUrl, x, z, seatedAt, balanceSeconds, onlineSeconds, badge }) => ({
           id,
           userId,
           name,
@@ -279,6 +318,8 @@ export class CafeRoom extends Room {
           z,
           seatedAt,
           balanceSeconds,
+          onlineSeconds,
+          badge,
         }),
       ),
       seats: Object.fromEntries(this.seats),

@@ -11,7 +11,7 @@ import {
 } from './security.mjs';
 
 const dataDir = process.env.DATA_DIR || '/app/data';
-const playerFields = 'id,username,nickname,fullname,avatar_url,x,z,balance_seconds,donated_seconds';
+const playerFields = 'id,username,nickname,fullname,avatar_url,x,z,balance_seconds,donated_seconds,online_seconds';
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 export function json(response, status, value) {
   response.writeHead(status, {
@@ -269,7 +269,7 @@ async function requireSeat(redis, playerId, stationId) {
 export async function contentRoutes(pool, redis, request, response, route) {
   const method = request.method;
   if (route === '/api/leaderboard' && method === 'GET') {
-    const [rich, donors, art] = await Promise.all([
+    const [rich, donors, art, board] = await Promise.all([
       pool.query(
         'SELECT nickname,avatar_url,balance_seconds FROM players ORDER BY balance_seconds DESC LIMIT 10',
       ),
@@ -279,8 +279,9 @@ export async function contentRoutes(pool, redis, request, response, route) {
       pool.query(
         `SELECT a.id,a.image_url,a.title,a.station_id,p.nickname,p.avatar_url,count(v.player_id) FILTER (WHERE v.vote=1)::int AS likes FROM art_images a JOIN players p ON p.id=a.player_id LEFT JOIN art_votes v ON v.image_id=a.id WHERE a.deleted_at IS NULL GROUP BY a.id,p.id ORDER BY likes DESC,a.created_at DESC LIMIT 10`,
       ),
+      pool.query('SELECT background_url,background_color FROM board_settings WHERE id=1'),
     ]);
-    return json(response, 200, { rich: rich.rows, donors: donors.rows, art: art.rows });
+    return json(response, 200, { rich: rich.rows, donors: donors.rows, art: art.rows, board: board.rows[0] });
   }
   const pcMatch = /^\/api\/pc\/(\d+)$/.exec(route);
   if (pcMatch) {
@@ -309,10 +310,26 @@ export async function contentRoutes(pool, redis, request, response, route) {
         throw error('invalid_url');
       if (browser && new URL(browser).host === request.headers.host)
         throw error('own_site_not_allowed');
-      await pool.query(
-        `INSERT INTO pc_states (station_id,wallpaper_url,browser_url,updated_by) VALUES ($1,$2,$3,$4) ON CONFLICT (station_id) DO UPDATE SET wallpaper_url=COALESCE(EXCLUDED.wallpaper_url,pc_states.wallpaper_url),browser_url=COALESCE(EXCLUDED.browser_url,pc_states.browser_url),updated_by=EXCLUDED.updated_by,updated_at=now()`,
-        [stationId, wallpaper, browser, player.id],
-      );
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          `INSERT INTO pc_states (station_id,wallpaper_url,browser_url,updated_by) VALUES ($1,$2,$3,$4) ON CONFLICT (station_id) DO UPDATE SET wallpaper_url=COALESCE(EXCLUDED.wallpaper_url,pc_states.wallpaper_url),browser_url=COALESCE(EXCLUDED.browser_url,pc_states.browser_url),updated_by=EXCLUDED.updated_by,updated_at=now()`,
+          [stationId, wallpaper, browser, player.id],
+        );
+        if (wallpaper)
+          await client.query(
+            'INSERT INTO art_images (id,station_id,player_id,image_url,title) VALUES ($1,$2,$3,$4,$5)',
+            [randomUUID(), stationId, player.id, wallpaper, String(data.albumTitle || 'Hình nền PC').trim().slice(0, 80)],
+          );
+        await client.query('COMMIT');
+      } catch (cause) {
+        await client.query('ROLLBACK');
+        if (wallpaper) await unlink(path.join(dataDir, path.basename(wallpaper))).catch(() => {});
+        throw cause;
+      } finally {
+        client.release();
+      }
       return json(response, 200, { saved: true });
     }
   }
@@ -390,10 +407,13 @@ export async function contentRoutes(pool, redis, request, response, route) {
     } finally {
       client.release();
     }
-    if (deleted)
-      await unlink(path.join(dataDir, path.basename(imageUrl))).catch((cause) =>
-        console.error('Art file cleanup failed:', cause),
-      );
+    if (deleted) {
+      const wallpaper = await pool.query('SELECT 1 FROM pc_states WHERE wallpaper_url=$1 LIMIT 1', [imageUrl]);
+      if (!wallpaper.rowCount)
+        await unlink(path.join(dataDir, path.basename(imageUrl))).catch((cause) =>
+          console.error('Art file cleanup failed:', cause),
+        );
+    }
     return json(response, 200, { accepted: true, deleted });
   }
   return false;

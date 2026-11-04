@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { api } from '@/lib/api';
+import { compressDesktopImage } from '@/lib/desktop-image';
 import { stations } from '@/lib/stations';
 import AssetErrorBoundary from './AssetErrorBoundary';
 
@@ -31,6 +32,7 @@ type Proposal = {
   scale: number;
 };
 type Config = { sitekey: string | null; configured: boolean; gemini: boolean };
+type Board = { background_url: string | null; background_color: string };
 type TurnstileApi = {
   render: (
     target: HTMLElement,
@@ -78,6 +80,10 @@ export default function AdminConsole() {
   const [password, setPassword] = useState('');
   const [captcha, setCaptcha] = useState('');
   const [notice, setNotice] = useState('');
+  const [board, setBoard] = useState<Board>({ background_url: null, background_color: '#231c3c' });
+  const [boardFile, setBoardFile] = useState<File | null>(null);
+  const [boardPreview, setBoardPreview] = useState<string | null>(null);
+  const [removeBoardImage, setRemoveBoardImage] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [objects, setObjects] = useState<Object3D[]>([]);
   const [levels, setLevels] = useState<Level[]>([]);
@@ -93,6 +99,9 @@ export default function AdminConsole() {
   const map = useRef<HTMLDivElement>(null);
   const captchaBox = useRef<HTMLDivElement>(null);
   const captchaWidget = useRef<string | null>(null);
+  useEffect(() => () => {
+    if (boardPreview) URL.revokeObjectURL(boardPreview);
+  }, [boardPreview]);
 
   useEffect(() => {
     api<Config>('/api/admin/config')
@@ -108,11 +117,13 @@ export default function AdminConsole() {
       api<{ assets: Asset[] }>('/api/admin/assets'),
       api<{ objects: Object3D[] }>('/api/admin/world'),
       api<{ levels: Level[] }>('/api/admin/levels'),
+      api<{ board: Board }>('/api/admin/board'),
     ])
-      .then(([assetResult, worldResult, levelResult]) => {
+      .then(([assetResult, worldResult, levelResult, boardResult]) => {
         setAssets(assetResult.assets);
         setObjects(worldResult.objects);
         setLevels(levelResult.levels);
+        setBoard(boardResult.board);
       })
       .catch((error) => setNotice(error.message));
   }, [admin]);
@@ -266,6 +277,23 @@ export default function AdminConsole() {
       setNotice((error as Error).message);
     }
   };
+  const saveBoard = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      const result = await api<{ board: Board }>('/api/admin/board', {
+        backgroundColor: board.background_color,
+        image: boardFile ? await compressDesktopImage(boardFile) : null,
+        removeImage: removeBoardImage && !boardFile,
+      });
+      setBoard(result.board);
+      setBoardFile(null);
+      setBoardPreview(null);
+      setRemoveBoardImage(false);
+      setNotice('Đã cập nhật nền bảng vàng.');
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
+  };
 
   return (
     <main className="admin-shell">
@@ -325,6 +353,25 @@ export default function AdminConsole() {
         </form>
       ) : (
         <div className="admin-grid">
+          <section className="admin-card">
+            <h2>Nền bảng vàng</h2>
+            <p>Chọn màu và ảnh nền cho bảng vàng trong quán. Ảnh được nén trước khi tải lên.</p>
+            <div className="board-preview" style={{ backgroundColor: board.background_color, backgroundImage: boardPreview ? `url(${boardPreview})` : board.background_url && !removeBoardImage ? `url(${board.background_url})` : undefined }}>
+              NETVERSE · BẢNG VÀNG
+            </div>
+            <form onSubmit={saveBoard}>
+              <label>
+                Màu nền
+                <input type="color" value={board.background_color} onChange={(event) => setBoard((current) => ({ ...current, background_color: event.target.value }))} />
+              </label>
+              <label>
+                Ảnh nền (PNG, JPEG, WebP)
+                <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0] || null; setBoardFile(file); setBoardPreview(file ? URL.createObjectURL(file) : null); setRemoveBoardImage(false); }} />
+              </label>
+              {board.background_url && <button type="button" onClick={() => { setBoardFile(null); setBoardPreview(null); setRemoveBoardImage(true); }}>XÓA ẢNH NỀN</button>}
+              <button>LƯU NỀN BẢNG VÀNG</button>
+            </form>
+          </section>
           <section className="admin-card">
             <h2>1. Tải asset lên</h2>
             <p>Chọn GLB hoặc GLTF tự chứa dữ liệu, kèm thông tin giấy phép sử dụng.</p>
