@@ -28,13 +28,13 @@ npm run lint && npm run typecheck && npm test && npm run build
 ## Cách chơi
 
 - Tạo username/mật khẩu, fullname và nickname duy nhất. Mỗi tài khoản mới có 60 phút. Nút **Lưu game** lưu vị trí; profile có thể tải ảnh avatar.
-- Nhấp vào cảnh 3D để giữ chuột và xoay camera; Esc thả chuột. WASD đi theo hướng camera, Shift chạy, E ngồi/đứng. Camera tự quay về sau lưng nhân vật khi di chuyển; các hàng PC cách nhau rộng hơn. Mỗi ghế có số máy. Thời gian chỉ trừ khi ngồi. Hết giờ, avatar ra sân ngoài; có thể quỳ xin và nhận phút từ người khác qua tab Cộng đồng. Bảng tên hiện phút còn lại, tổng thời gian online và huy hiệu nghệ sĩ.
+- Camera theo vị trí nhân vật và không xoay bằng chuột. W đi vào quán, S lùi, A sang trái, D sang phải; nhân vật quay về hướng đang đi. Shift chạy, E ngồi/đứng. Có thể chọn một trong 10 nhân vật 3D trong Profile. Mỗi ghế có số máy. Thời gian chỉ trừ khi ngồi. Hết giờ, avatar ra sân ngoài; có thể quỳ xin và nhận phút từ người khác qua tab Cộng đồng. Bảng tên hiện phút còn lại, tổng thời gian online và huy hiệu nghệ sĩ.
 - PC có desktop với hình nền vẽ/tải lên, trình duyệt, album ảnh và top 10 tranh. Ảnh tải lên được nén; hình nền mới và tranh vẽ tự động vào album của PC. Thông báo tải ảnh hiện ngay trong desktop. Hình nền, URL browser và album ở lại máy cho người đến sau. Mỗi like cộng 10 phút cho tác giả. Ảnh bị xóa khi unlike vượt quá nửa số người dùng máy từ lúc đăng, tối thiểu 5 người.
 - Trong Album hoặc Top tranh, bấm vào ảnh để xem lớn; bấm nút ×, phím Esc hoặc nền ngoài popup để quay lại. Bấm tên/avatar tác giả để xem profile và mở chat riêng nếu họ đang online.
 - Dán URL video YouTube hoặc TikTok vào trình duyệt PC để phát bằng player nhúng. Báo điện tử chỉ hiển thị nếu trang cho phép iframe; nút **Mở ngoài** mở trang trong tab trình duyệt mới khi bị chặn.
-- Tab Cộng đồng hiển thị người online, chat phòng chung/riêng và ảnh. Chat không lưu trên server; nội dung nhận được lưu trong IndexedDB của máy người chơi. Người offline không nhận tin nhắn.
+- Tab Cộng đồng hiển thị người online, các cuộc trò chuyện riêng theo tin nhắn mới nhất, số tin chưa đọc, avatar, thời gian nhắn và tim. Ảnh chat được nén trước khi gửi. Chat không lưu trên server; nội dung nhận được lưu trong IndexedDB của máy người chơi. Người offline không nhận tin nhắn.
 - Admin tải GLB/GLTF, nhập giấy phép, xem trước/cân kích thước, kéo vật thể trên sơ đồ và xuất bản. Gemini có thể tạo phương án bố trí để admin duyệt. Admin cũng chỉnh ngưỡng cấp nghệ sĩ và màu/ảnh nền bảng vàng.
-- Admin tải MP3 dưới 8 MB trong mục **Nhạc cộng đồng** rồi chọn phát/dừng. Người chơi nghe cùng bài và có nút bật/tắt riêng; nếu trình duyệt chặn tự phát, bấm **BẬT NHẠC** một lần.
+- Admin thêm link YouTube trong mục **Nhạc cộng đồng** rồi chọn phát/dừng. Người chơi nghe cùng bài và có nút bật/tắt riêng; nếu trình duyệt chặn tự phát, bấm phát trên trình phát video. Admin có danh sách người chơi, trạng thái 200 PC và bản xem trước desktop đang hoạt động.
 
 Xem thêm [kiến trúc và giới hạn](docs/ARCHITECTURE.md), [giấy phép asset](docs/ASSET_LICENSES.md), [cách thêm GLB](docs/ASSET_INTEGRATION.md), và [guide gốc](NETVERSE_3D_ASSET_GUIDE.md).
 

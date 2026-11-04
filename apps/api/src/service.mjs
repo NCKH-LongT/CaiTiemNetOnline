@@ -1,6 +1,7 @@
 import { readFile, mkdir, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import characters from '../../../shared/characters.json' with { type: 'json' };
 import {
   cookie,
   hashPassword,
@@ -11,7 +12,8 @@ import {
 } from './security.mjs';
 
 const dataDir = process.env.DATA_DIR || '/app/data';
-const playerFields = 'id,username,nickname,fullname,avatar_url,x,z,balance_seconds,donated_seconds,online_seconds';
+const playerFields = 'id,username,nickname,fullname,avatar_url,character_id,x,z,balance_seconds,donated_seconds,online_seconds';
+const characterIds = new Set(characters.map((item) => item.id));
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 export function json(response, status, value) {
   response.writeHead(status, {
@@ -221,10 +223,12 @@ export async function playerRoutes(pool, redis, request, response, route) {
     if (fullname.length < 2 || fullname.length > 80 || nickname.length < 2 || nickname.length > 24)
       throw error('invalid_profile');
     const avatar = data.image ? await storeImage(data.image, 'avatar') : player.avatar_url;
+    const characterId = data.characterId === undefined ? player.character_id : String(data.characterId);
+    if (!characterIds.has(characterId)) throw error('invalid_character');
     try {
       const result = await pool.query(
-        `UPDATE players SET fullname=$1,nickname=$2,avatar_url=$3 WHERE id=$4 RETURNING ${playerFields}`,
-        [fullname, nickname, avatar, player.id],
+        `UPDATE players SET fullname=$1,nickname=$2,avatar_url=$3,character_id=$4 WHERE id=$5 RETURNING ${playerFields}`,
+        [fullname, nickname, avatar, characterId, player.id],
       );
       return json(response, 200, { player: result.rows[0] });
     } catch (cause) {

@@ -31,6 +31,10 @@
 .community-music span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .community-music button { flex: none; border: 0; border-radius: 5px; padding: 6px; background: #8d74d9; color: #171426; font-size: 10px; font-weight: 700; cursor: pointer; }
 .community-music button:disabled { opacity: .55; cursor: default; }
+.music-player { position: absolute; right: 0; top: 100%; width: 260px; padding: 7px; background: #171628; border: 1px solid #b6a0e440; border-radius: 8px; display: none; }
+.music-player.open { display: block; }
+.music-player iframe { width: 100%; height: 150px; border: 0; }
+.music-player small { display: block; font-size: 10px; color: #c9bddb; }
 @media (max-width: 900px) { .community-music { top: 112px; right: 12px; } }
 .main-tabs button,
 .auth-switch button {
@@ -545,6 +549,12 @@
 .online-list button.selected {
   background: #6f5da861;
 }
+.online-list button.unread strong { font-weight: 800; color: white; }
+.chat-room-label { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.chat-room-label strong, .chat-room-label small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-room-label small { margin-left: 0; max-width: 100%; }
+.chat-avatar { width: 25px; height: 25px; flex: none; display: inline-grid; place-items: center; border-radius: 50%; background: #7962ba; color: white; }
+.unread-badge { min-width: 18px; height: 18px; padding: 0 4px; display: inline-grid; place-items: center; border-radius: 9px; background: #e497a8; color: #231528; font-size: 10px; font-weight: 800; }
 .online-list button img {
   width: 25px;
   height: 25px;
@@ -584,6 +594,10 @@
   color: #9ee5d0;
   font-size: 11px;
 }
+.chat-messages b { display: flex; align-items: center; gap: 5px; }
+.chat-messages time { display: block; margin: 4px 0; color: #9d94ae; font-size: 10px; }
+.heart-button { display: block; margin-top: 6px; padding: 3px 7px; border: 1px solid #ffffff30; border-radius: 5px; background: transparent; color: #bbaacb; font-size: 11px; }
+.heart-button.selected { color: #ff9caa; border-color: #ff9caa; }
 .chat-messages span {
   font-size: 12px;
 }

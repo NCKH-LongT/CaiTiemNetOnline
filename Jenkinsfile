@@ -124,6 +124,14 @@ pipeline {
     }
   }
   post {
-    always { deleteDir() }
+    always {
+      script {
+        try {
+          deleteDir()
+        } catch (org.jenkinsci.plugins.workflow.steps.MissingContextVariableException ignored) {
+          echo 'Skipping workspace cleanup: no agent workspace was allocated.'
+        }
+      }
+    }
   }
 }

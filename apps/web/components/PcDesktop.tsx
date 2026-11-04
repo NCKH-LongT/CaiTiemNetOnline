@@ -14,6 +14,7 @@ type Props = {
   viewerId: string;
   onlinePlayers: { userId?: string }[];
   onAlbumChange: () => void;
+  onViewChange: (tab: 'desktop' | 'browser' | 'album' | 'top' | 'drawing', preview?: string) => void;
   onPrivateChat: (userId: string) => void;
   onStand: () => void;
 };
@@ -23,7 +24,7 @@ const formatTime = (seconds: number) =>
     .padStart(2, '0')}:${Math.floor(seconds % 60)
     .toString()
     .padStart(2, '0')}`;
-export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers, onAlbumChange, onPrivateChat, onStand }: Props) {
+export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers, onAlbumChange, onViewChange, onPrivateChat, onStand }: Props) {
   const [tab, setTab] = useState<'desktop' | 'browser' | 'album' | 'top'>('desktop');
   const [state, setState] = useState<State>({});
   const [images, setImages] = useState<ArtImage[]>([]);
@@ -38,6 +39,24 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
   const [profileError, setProfileError] = useState('');
   const canvas = useRef<HTMLCanvasElement>(null);
   const painting = useRef(false);
+  useEffect(() => {
+    const view = drawing ? 'drawing' : tab;
+    const report = () => {
+      let preview: string | undefined;
+      if (drawing && canvas.current) {
+        const thumbnail = document.createElement('canvas');
+        thumbnail.width = 480;
+        thumbnail.height = 270;
+        thumbnail.getContext('2d')?.drawImage(canvas.current, 0, 0, 480, 270);
+        const data = thumbnail.toDataURL('image/webp', 0.5);
+        if (data.length < 170_000) preview = data;
+      }
+      onViewChange(view, preview);
+    };
+    report();
+    const timer = setInterval(report, drawing ? 2000 : 10000);
+    return () => clearInterval(timer);
+  }, [tab, drawing, onViewChange]);
 
   const refresh = async () => {
     const result = await api<{ state: State; images: ArtImage[] }>(`/api/pc/${stationId}`);

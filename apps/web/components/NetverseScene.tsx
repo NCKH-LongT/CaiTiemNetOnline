@@ -4,6 +4,8 @@ import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
+import { characterUrl } from '@/lib/characters';
 import GamingStation from './GamingStation';
 import AssetErrorBoundary from './AssetErrorBoundary';
 import { canMoveTo, nearestStation, stations, worldBounds, type Point3 } from '@/lib/stations';
@@ -17,6 +19,8 @@ export type RemotePlayer = {
   name: string;
   fullname?: string;
   avatarUrl?: string | null;
+  characterId?: string;
+  heading?: number;
   balanceSeconds?: number;
   onlineSeconds?: number;
   badge?: string | null;
@@ -35,6 +39,7 @@ type Props = {
   localName?: string;
   localFullname?: string;
   localAvatarUrl?: string | null;
+  localCharacterId?: string;
   localBalanceSeconds?: number;
   localOnlineSeconds?: number;
   localBadge?: string | null;
@@ -266,6 +271,8 @@ function Avatar({
   name,
   fullname,
   avatarUrl,
+  characterId,
+  heading = 0,
   balanceSeconds,
   onlineSeconds,
   badge,
@@ -278,6 +285,8 @@ function Avatar({
   name?: string;
   fullname?: string;
   avatarUrl?: string | null;
+  characterId?: string;
+  heading?: number;
   balanceSeconds?: number;
   onlineSeconds?: number;
   badge?: string | null;
@@ -296,7 +305,13 @@ function Avatar({
         (seated ? 0.81 : kneeling ? 0.55 : 0.96) + Math.sin(clock.getElapsedTime() * 2) * 0.015;
   });
   return (
-    <group position={position}>
+    <group position={position} rotation={[0, heading, 0]}>
+      <AssetErrorBoundary>
+        <Suspense fallback={null}>
+          <CharacterModel characterId={characterId} movement={movement} seated={seated} />
+        </Suspense>
+      </AssetErrorBoundary>
+      {!characterId && <group>
       <mesh ref={body} position={[0, seated ? 0.81 : kneeling ? 0.55 : 0.96, 0]} castShadow>
         <capsuleGeometry args={[0.23, seated ? 0.3 : 0.48, 4, 8]} />
         <meshStandardMaterial color={color} />
@@ -317,9 +332,52 @@ function Avatar({
               <meshStandardMaterial color="#252837" />
             </mesh>
           ))}
+      </group>}
       {name && <AvatarTag name={name} fullname={fullname} avatarUrl={avatarUrl} balanceSeconds={balanceSeconds} onlineSeconds={onlineSeconds} badge={badge} />}
     </group>
   );
+}
+
+function CharacterModel({ characterId, movement, seated }: { characterId?: string; movement?: React.RefObject<number>; seated: boolean }) {
+  const gltf = useLoader(GLTFLoader, characterUrl(characterId));
+  const model = useMemo(() => {
+    const copy = cloneSkeleton(gltf.scene);
+    const bounds = new THREE.Box3().setFromObject(copy);
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+    copy.position.set(-center.x, -bounds.min.y, -center.z);
+    const scale = size.y > 0 ? 1.75 / size.y : 1;
+    return { copy, scale };
+  }, [gltf.scene]);
+  const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const activeAction = useRef<THREE.AnimationAction | null>(null);
+  const activeName = useRef('');
+  useEffect(() => {
+    const mixer = new THREE.AnimationMixer(model.copy);
+    mixerRef.current = mixer;
+    return () => { mixer.stopAllAction(); mixerRef.current = null; activeAction.current = null; activeName.current = ''; };
+  }, [model.copy]);
+  useFrame((_, delta) => {
+    const mixer = mixerRef.current;
+    if (!mixer) return;
+    const running = movement?.current || 0;
+    const name = seated ? 'SitDown' : running > 1 ? 'Run' : running > 0 ? 'Walk' : 'Idle';
+    if (name !== activeName.current) {
+      activeAction.current?.fadeOut(0.18);
+      const clip = gltf.animations.find((item) => item.name === name) || gltf.animations[0];
+      const action = clip ? mixer.clipAction(clip) : null;
+      if (action) {
+        action.reset();
+        action.setLoop(seated ? THREE.LoopOnce : THREE.LoopRepeat, seated ? 1 : Infinity);
+        action.clampWhenFinished = seated;
+        action.fadeIn(0.18).play();
+      }
+      activeAction.current = action;
+      activeName.current = name;
+    }
+    mixer.update(delta);
+  });
+  return <group scale={model.scale} position={[0, seated ? -0.5 : 0, 0]}><primitive object={model.copy} /></group>;
 }
 
 function RoomShell() {
@@ -366,14 +424,10 @@ function RoomShell() {
 }
 
 function World(props: Props) {
-  const { camera, gl } = useThree();
+  const { camera } = useThree();
   const avatarGroup = useRef<THREE.Group>(null);
   const avatarPosition = useRef<Point3>([...props.startPosition]);
   const heading = useRef(0);
-  const cameraYaw = useRef(0);
-  const movementInput = useRef('');
-  const movementHeading = useRef(0);
-  const cameraPitch = useRef(0);
   const visibleCell = useRef('');
   const [visibleStations, setVisibleStations] = useState(() =>
     stations.filter(
@@ -394,28 +448,6 @@ function World(props: Props) {
   const cameraLook = useRef(new THREE.Vector3(props.startPosition[0], 1.2, props.startPosition[2] - 2));
   const seatedStation = props.seatedAt ? stations[props.seatedAt - 1] : null;
   useEffect(() => {
-    const element = gl.domElement;
-    if (!props.cameraEnabled) {
-      if (document.pointerLockElement === element) document.exitPointerLock();
-      return;
-    }
-    const lock = () => {
-      if (document.pointerLockElement !== element) element.requestPointerLock().catch(() => {});
-    };
-    const rotate = (event: MouseEvent) => {
-      if (document.pointerLockElement !== element) return;
-      cameraYaw.current -= event.movementX * 0.0025;
-      cameraPitch.current = THREE.MathUtils.clamp(cameraPitch.current + event.movementY * 0.003, -0.7, 0.8);
-    };
-    element.addEventListener('pointerdown', lock);
-    document.addEventListener('mousemove', rotate);
-    return () => {
-      element.removeEventListener('pointerdown', lock);
-      document.removeEventListener('mousemove', rotate);
-      if (document.pointerLockElement === element) document.exitPointerLock();
-    };
-  }, [gl, props.cameraEnabled]);
-  useEffect(() => {
     const load = () =>
       fetch('/api/world')
         .then((response) => response.json())
@@ -429,7 +461,7 @@ function World(props: Props) {
   useFrame((_, delta) => {
     const position = avatarPosition.current;
     movementAmount.current = 0;
-    if (!seatedStation && !props.kneeling) {
+    if (props.cameraEnabled && !seatedStation && !props.kneeling) {
       const strafe =
         Number(props.heldKeys.current.has('d') || props.heldKeys.current.has('arrowright')) -
         Number(props.heldKeys.current.has('a') || props.heldKeys.current.has('arrowleft'));
@@ -438,13 +470,9 @@ function World(props: Props) {
         Number(props.heldKeys.current.has('s') || props.heldKeys.current.has('arrowdown'));
       if (strafe || forward) {
         movementAmount.current = props.heldKeys.current.has('shift') ? 1.7 : 1;
-        const input = `${strafe}:${forward}`;
-        if (input !== movementInput.current) {
-          movementInput.current = input;
-          movementHeading.current = cameraYaw.current + Math.atan2(strafe, forward);
-        }
-        const dx = Math.sin(movementHeading.current);
-        const dz = Math.cos(movementHeading.current);
+        const length = Math.hypot(strafe, forward);
+        const dx = strafe / length;
+        const dz = -forward / length;
         const speed = props.heldKeys.current.has('shift') ? 5 : 3.1;
         const nextX = position[0] + dx * speed * Math.min(delta, 0.05);
         const nextZ = position[2] + dz * speed * Math.min(delta, 0.05);
@@ -455,18 +483,12 @@ function World(props: Props) {
         const desiredHeading = Math.atan2(dx, dz);
         const difference = Math.atan2(Math.sin(desiredHeading - heading.current), Math.cos(desiredHeading - heading.current));
         heading.current += difference * Math.min(1, delta * 8);
-        if (avatarGroup.current) avatarGroup.current.rotation.y = heading.current;
         const now = performance.now();
         if (now - lastMoveSend.current > 100) {
           props.onMove(x, z);
           lastMoveSend.current = now;
         }
       }
-      else movementInput.current = '';
-    }
-    if (props.cameraEnabled && !seatedStation) {
-      const yawDifference = Math.atan2(Math.sin(heading.current - cameraYaw.current), Math.cos(heading.current - cameraYaw.current));
-      cameraYaw.current += yawDifference * Math.min(1, delta * 3.5);
     }
     const current = avatarPosition.current;
     const cell = `${Math.floor(current[0] / 4)}:${Math.floor(current[2] / 4)}`;
@@ -489,6 +511,9 @@ function World(props: Props) {
     }
     if (avatarGroup.current) {
       avatarGroup.current.position.set(...(seatedStation?.seatAnchor ?? current));
+      avatarGroup.current.rotation.y = seatedStation
+        ? Math.atan2(seatedStation.screenAnchor[0] - seatedStation.seatAnchor[0], seatedStation.screenAnchor[2] - seatedStation.seatAnchor[2])
+        : heading.current;
     }
     if (seatedStation) {
       const side = seatedStation.side;
@@ -500,14 +525,14 @@ function World(props: Props) {
       cameraTarget.current.set(...seatedStation.screenAnchor);
     } else {
       target.current.set(
-        current[0] - Math.sin(cameraYaw.current) * 5.2,
-        3.1 + cameraPitch.current * 2,
-        current[2] - Math.cos(cameraYaw.current) * 5.2,
+        current[0],
+        3.1,
+        current[2] + 5.2,
       );
       cameraTarget.current.set(
-        current[0] + Math.sin(cameraYaw.current) * 2,
-        1.25 - cameraPitch.current * 0.7,
-        current[2] + Math.cos(cameraYaw.current) * 2,
+        current[0],
+        1.25,
+        current[2] - 2,
       );
     }
     camera.position.lerp(target.current, Math.min(1, delta * 3.2));
@@ -557,6 +582,7 @@ function World(props: Props) {
           name={seatedStation ? undefined : props.localName}
           fullname={props.localFullname}
           avatarUrl={props.localAvatarUrl}
+          characterId={props.localCharacterId}
           balanceSeconds={props.localBalanceSeconds}
           onlineSeconds={props.localOnlineSeconds}
           badge={props.localBadge}
@@ -579,6 +605,8 @@ function World(props: Props) {
               name={player.name}
               fullname={player.fullname}
               avatarUrl={player.avatarUrl}
+              characterId={player.characterId}
+              heading={station ? Math.atan2(station.screenAnchor[0] - station.seatAnchor[0], station.screenAnchor[2] - station.seatAnchor[2]) : player.heading}
               balanceSeconds={player.balanceSeconds}
               onlineSeconds={player.onlineSeconds}
               badge={player.badge}

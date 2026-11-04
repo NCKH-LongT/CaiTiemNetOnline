@@ -1,8 +1,10 @@
 'use client';
 
-import { Canvas, useFrame, useLoader } from '@react-three/fiber';
+import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
 import Link from 'next/link';
+import Image from 'next/image';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { api } from '@/lib/api';
@@ -21,6 +23,7 @@ type Object3D = {
   rotation: number;
   scale: number;
   published: boolean;
+  assetId?: string;
 };
 type Level = { level: number; name: string; min_uploads: number; min_likes: number };
 type Proposal = {
@@ -34,6 +37,9 @@ type Proposal = {
 type Config = { sitekey: string | null; configured: boolean; gemini: boolean };
 type Board = { background_url: string | null; background_color: string };
 type MusicTrack = { id: string; title: string; file_url: string; created_at: string };
+type AdminPlayer = { id: string; username: string; nickname: string; fullname: string; avatar_url: string | null; balance_seconds: number; online_seconds: number; donated_seconds: number; pc_count: number; art_count: number; created_at: string; live: { sessionId: string; seatedAt: number | null } | null };
+type AdminPc = { stationId: number; wallpaper_url?: string | null; browser_url?: string | null; userId: string | null; nickname: string | null; desktop: { tab: string; updatedAt: number } | null };
+type AdminArt = { id: string; title: string; image_url: string; nickname: string };
 type TurnstileApi = {
   render: (
     target: HTMLElement,
@@ -74,6 +80,40 @@ function ModelPreview({
   );
 }
 
+function PreviewControls() {
+  const { camera, gl } = useThree();
+  useEffect(() => {
+    const controls = new OrbitControls(camera, gl.domElement);
+    controls.target.set(0, 0, 0);
+    controls.enableZoom = false;
+    controls.update();
+    return () => controls.dispose();
+  }, [camera, gl]);
+  return null;
+}
+
+function PlacedModel({ object }: { object: Object3D }) {
+  const gltf = useLoader(GLTFLoader, object.asset_url);
+  return <group position={[object.x, object.y, object.z]} rotation={[0, object.rotation, 0]} scale={object.scale}>
+    <primitive object={gltf.scene.clone()} />
+  </group>;
+}
+
+function WorldPreview({ objects }: { objects: Object3D[] }) {
+  return <div className="admin-world-preview"><Canvas camera={{ position: [22, 44, 48], fov: 48 }}>
+    <color attach="background" args={['#171625']} />
+    <ambientLight intensity={1.7} />
+    <directionalLight position={[12, 30, 10]} intensity={2} />
+    <mesh rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[34, 66]} /><meshStandardMaterial color="#29263d" /></mesh>
+    <gridHelper args={[66, 33, '#5e517c', '#40394f']} position={[0, 0.02, 0]} />
+    {stations.map((station) => <mesh key={station.stationId} position={[station.position[0], 0.28, station.position[2]]}>
+      <boxGeometry args={[0.5, 0.55, 0.7]} /><meshStandardMaterial color="#8f78d5" />
+    </mesh>)}
+    <Suspense fallback={null}>{objects.map((object) => <AssetErrorBoundary key={object.id}><PlacedModel object={object} /></AssetErrorBoundary>)}</Suspense>
+    <PreviewControls />
+  </Canvas></div>;
+}
+
 export default function AdminConsole() {
   const [config, setConfig] = useState<Config | null>(null);
   const [admin, setAdmin] = useState(false);
@@ -84,7 +124,12 @@ export default function AdminConsole() {
   const [musicTracks, setMusicTracks] = useState<MusicTrack[]>([]);
   const [playingTrack, setPlayingTrack] = useState<string | null>(null);
   const [musicTitle, setMusicTitle] = useState('');
-  const [musicFile, setMusicFile] = useState<File | null>(null);
+  const [musicUrl, setMusicUrl] = useState('');
+  const [adminPlayers, setAdminPlayers] = useState<AdminPlayer[]>([]);
+  const [adminPcs, setAdminPcs] = useState<AdminPc[]>([]);
+  const [selectedPcId, setSelectedPcId] = useState<number | null>(null);
+  const [pcFilter, setPcFilter] = useState<'all' | 'active'>('all');
+  const [pcDetail, setPcDetail] = useState<{ images: AdminArt[]; top: AdminArt[]; preview: string | null }>({ images: [], top: [], preview: null });
   const [board, setBoard] = useState<Board>({ background_url: null, background_color: '#231c3c' });
   const [boardFile, setBoardFile] = useState<File | null>(null);
   const [boardPreview, setBoardPreview] = useState<string | null>(null);
@@ -102,6 +147,7 @@ export default function AdminConsole() {
   const [prompt, setPrompt] = useState('');
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const map = useRef<HTMLDivElement>(null);
+  const dragPosition = useRef<{ x: number; z: number } | null>(null);
   const captchaBox = useRef<HTMLDivElement>(null);
   const captchaWidget = useRef<string | null>(null);
   useEffect(() => () => {
@@ -135,6 +181,25 @@ export default function AdminConsole() {
         setPlayingTrack(playingResult.track?.id || null);
       })
       .catch((error) => setNotice(error.message));
+  }, [admin]);
+  useEffect(() => {
+    if (!admin || !selectedPcId) return;
+    let active = true;
+    const refresh = () => api<{ images: AdminArt[]; top: AdminArt[]; preview: string | null }>(`/api/admin/pc/${selectedPcId}`)
+      .then((result) => { if (active) setPcDetail(result); })
+      .catch(() => {});
+    refresh();
+    const timer = setInterval(refresh, 5000);
+    return () => { active = false; clearInterval(timer); };
+  }, [admin, selectedPcId]);
+  useEffect(() => {
+    if (!admin) return;
+    const refresh = () => api<{ players: AdminPlayer[]; pcs: AdminPc[] }>('/api/admin/overview')
+      .then((result) => { setAdminPlayers(result.players); setAdminPcs(result.pcs); })
+      .catch((error) => setNotice(error.message));
+    refresh();
+    const timer = setInterval(refresh, 5000);
+    return () => clearInterval(timer);
   }, [admin]);
   useEffect(() => {
     if (admin || !config?.sitekey || !captchaBox.current) return;
@@ -174,21 +239,13 @@ export default function AdminConsole() {
   };
   const uploadMusic = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!musicFile) return;
     try {
-      if (musicFile.size > 8_000_000 || !musicFile.name.toLowerCase().endsWith('.mp3'))
-        throw new Error('Chọn file MP3 dưới 8 MB.');
-      const audio = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('Không đọc được file nhạc.'));
-        reader.readAsDataURL(musicFile);
-      });
-      const result = await api<{ track: MusicTrack }>('/api/admin/music', { title: musicTitle, audio });
+      const result = await api<{ track: MusicTrack }>('/api/admin/music', { title: musicTitle, youtubeUrl: musicUrl });
       setMusicTracks((current) => [result.track, ...current]);
+      setPlayingTrack(result.track.id);
       setMusicTitle('');
-      setMusicFile(null);
-      setNotice('Đã thêm bài nhạc.');
+      setMusicUrl('');
+      setNotice('Đã thêm link và phát nhạc cho cộng đồng.');
     } catch (error) { setNotice((error as Error).message); }
   };
   const playMusic = async (trackId: string | null) => {
@@ -337,6 +394,7 @@ export default function AdminConsole() {
       setNotice((error as Error).message);
     }
   };
+  const selectedPc = adminPcs.find((item) => item.stationId === selectedPcId);
 
   return (
     <main className="admin-shell">
@@ -396,13 +454,50 @@ export default function AdminConsole() {
         </form>
       ) : (
         <div className="admin-grid">
+          <section className="admin-card admin-overview">
+            <h2>Người chơi ({adminPlayers.length})</h2>
+            <p>{adminPlayers.filter((item) => item.live).length} người online · nhấn người chơi đang sử dụng PC để xem desktop.</p>
+            <div className="admin-player-list">
+              {adminPlayers.map((item) => <button key={item.id} type="button" onClick={() => setSelectedPcId(item.live?.seatedAt || null)}>
+                {item.avatar_url ? <Image unoptimized src={item.avatar_url} alt="" width={32} height={32} /> : <span className="admin-avatar">{item.nickname[0]}</span>}
+                <span><strong>{item.nickname}</strong><small>@{item.username} · {item.fullname}</small></span>
+                <span className={item.live ? 'admin-online' : ''}>{item.live ? item.live.seatedAt ? `Đang dùng PC #${item.live.seatedAt}` : 'Online' : 'Offline'}</span>
+                <small>{Math.floor(item.online_seconds / 60)} phút online · {Math.floor(item.balance_seconds / 60)} phút còn · {item.pc_count} PC · {item.art_count} tranh</small>
+              </button>)}
+            </div>
+          </section>
+          <section className="admin-card admin-overview">
+            <h2>Phòng máy ({adminPcs.filter((item) => item.userId).length}/200 hoạt động)</h2>
+            <div className="pc-filters"><button className={pcFilter === 'all' ? 'selected' : ''} onClick={() => setPcFilter('all')}>TẤT CẢ</button><button className={pcFilter === 'active' ? 'selected' : ''} onClick={() => setPcFilter('active')}>ĐANG DÙNG</button></div>
+            <div className="admin-pc-grid">
+              {adminPcs.filter((item) => pcFilter === 'all' || item.userId).map((item) => <button key={item.stationId} className={`${item.userId ? 'active' : ''} ${selectedPcId === item.stationId ? 'selected' : ''}`} onClick={() => setSelectedPcId(item.stationId)} title={item.nickname || 'Máy trống'}>#{item.stationId}<small>{item.nickname || 'Trống'}</small></button>)}
+            </div>
+            {selectedPc && <div className="admin-desktop-view">
+              <h3>Desktop PC #{selectedPc.stationId} · {selectedPc.nickname || 'Không có người sử dụng'}</h3>
+              <p>Ứng dụng hiện tại: <b>{({ desktop: 'Desktop', browser: 'Trình duyệt', album: 'Album', top: 'Top tranh', drawing: 'Đang vẽ' } as Record<string, string>)[selectedPc.desktop?.tab || 'desktop']}</b></p>
+              <div className="admin-desktop-screen" style={selectedPc.wallpaper_url ? { backgroundImage: `url(${selectedPc.wallpaper_url})` } : undefined}>
+                <strong>NETVERSE OS</strong>
+                {selectedPc.desktop?.tab === 'browser' && selectedPc.browser_url && <iframe title={`Trình duyệt PC ${selectedPc.stationId}`} src={selectedPc.browser_url} sandbox="allow-forms allow-scripts allow-same-origin allow-popups" referrerPolicy="strict-origin-when-cross-origin" />}
+                {selectedPc.desktop?.tab === 'drawing' && (pcDetail.preview ? <Image unoptimized className="admin-drawing-preview" src={pcDetail.preview} alt="Nét vẽ đang thực hiện" width={480} height={270} /> : <span>Đang chờ nét vẽ...</span>)}
+                {['album', 'top'].includes(selectedPc.desktop?.tab || '') && <div className="admin-desktop-gallery">
+                  {(selectedPc.desktop?.tab === 'top' ? pcDetail.top : pcDetail.images).map((image) => <figure key={image.id}>
+                    <Image unoptimized src={image.image_url} alt={image.title} width={92} height={70} />
+                    <figcaption>{image.title || 'Không tên'} · {image.nickname}</figcaption>
+                  </figure>)}
+                  {!(selectedPc.desktop?.tab === 'top' ? pcDetail.top : pcDetail.images).length && <span>Chưa có tranh.</span>}
+                </div>}
+              </div>
+              {selectedPc.browser_url && <a href={selectedPc.browser_url} target="_blank" rel="noopener noreferrer">Trang đang mở ↗</a>}
+              <small>Trạng thái ứng dụng cập nhật từ PC đang online; hình nền và URL lấy từ dữ liệu đã lưu.</small>
+            </div>}
+          </section>
           <section className="admin-card admin-music">
             <h2>Nhạc cộng đồng</h2>
-            <p>Tải MP3 dưới 8 MB. Bài admin chọn sẽ phát cho mọi người; mỗi người có thể tự tắt tiếng.</p>
+            <p>Dán link YouTube. Bài admin chọn sẽ phát mặc định cho cộng đồng; mỗi người có thể tự tắt.</p>
             <form onSubmit={uploadMusic}>
               <input value={musicTitle} onChange={(event) => setMusicTitle(event.target.value)} placeholder="Tên bài nhạc" required maxLength={100} aria-label="Tên bài nhạc" />
-              <input type="file" accept=".mp3,audio/mpeg" onChange={(event) => setMusicFile(event.target.files?.[0] || null)} required aria-label="File MP3" />
-              <button type="submit">TẢI BÀI LÊN</button>
+              <input type="url" value={musicUrl} onChange={(event) => setMusicUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." required aria-label="Link YouTube" />
+              <button type="submit">THÊM LINK</button>
             </form>
             <div className="admin-music-list">
               {musicTracks.map((track) => <div key={track.id}>
@@ -544,6 +639,7 @@ export default function AdminConsole() {
               Kéo các chấm tròn để đổi vị trí. Chọn vật thể bên dưới để chỉnh tỉ lệ, góc xoay và
               xuất bản.
             </p>
+            <WorldPreview objects={objects} />
             <div className="world-map" ref={map}>
               {stations.map((station) => (
                 <span
@@ -566,10 +662,11 @@ export default function AdminConsole() {
                   }}
                   title={object.asset_url}
                   onClick={() => setSelectedObject(object)}
-                  onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
+                  onPointerDown={(event) => { dragPosition.current = { x: object.x, z: object.z }; event.currentTarget.setPointerCapture(event.pointerId); }}
                   onPointerMove={(event) => {
                     if (!event.buttons) return;
                     const point = mapPosition(event);
+                    dragPosition.current = point;
                     setObjects((current) =>
                       current.map((item) => (item.id === object.id ? { ...item, ...point } : item)),
                     );
@@ -578,7 +675,8 @@ export default function AdminConsole() {
                     );
                   }}
                   onPointerUp={(event) => {
-                    const point = mapPosition(event);
+                    const point = dragPosition.current || mapPosition(event);
+                    dragPosition.current = null;
                     updateObject({ ...object, ...point });
                   }}
                 />
@@ -588,6 +686,11 @@ export default function AdminConsole() {
             {selectedObject && (
               <div className="object-controls">
                 <h3>Vật thể đã chọn</h3>
+                <label className="object-asset-select">Mô hình
+                  <select value={selectedObject.assetId || assets.find((asset) => asset.asset_url === selectedObject.asset_url)?.id || ''} onChange={(event) => setSelectedObject((current) => current ? { ...current, assetId: event.target.value } : current)}>
+                    {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                  </select>
+                </label>
                 {(['x', 'y', 'z', 'rotation', 'scale'] as const).map((field) => (
                   <label key={field}>
                     {field}

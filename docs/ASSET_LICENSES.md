@@ -1,6 +1,6 @@
 # NETVERSE 3D – nguồn và giấy phép asset
 
-Kiểm tra ngày **04/11/2026**. MVP hiện tại chỉ sử dụng hình học, vật liệu và màu được tạo trong mã nguồn `apps/web/components/`. **Không có model hoặc texture bên ngoài trong repository.** Font DM Sans và Space Grotesk được trình duyệt tải từ Google Fonts; không có file font được đưa vào Git.
+Kiểm tra ngày **05/11/2026**. Thế giới và PC dùng hình học tạo trong mã nguồn; 10 nhân vật GLTF được thêm vào `apps/web/public/characters/`. Font DM Sans và Space Grotesk được trình duyệt tải từ Google Fonts.
 
 | Asset dự kiến | Tác giả | Nguồn và bằng chứng giấy phép | Quyền ghi công / phân phối file gốc | File đang dùng |
 |---|---|---|---|---|
@@ -12,6 +12,7 @@ Kiểm tra ngày **04/11/2026**. MVP hiện tại chỉ sử dụng hình học,
 | Rojatzo's Gaming Chair | Rojatzo | [Trang asset](https://rojatzo.itch.io/rojatzos-gaming-chair) ghi CC0 | Không bắt buộc ghi công; CC0 cho phép phân phối | Chưa dùng |
 | Furniture Bits bản Free | Kay Lousberg | [Trang asset](https://kaylousberg.itch.io/furniture-bits) ghi CC0 cho bản Free | Không bắt buộc ghi công; tác giả đề nghị không bán bản chưa sửa đổi | Chưa dùng |
 | Universal Base Characters bản Free | Quaternius | [Trang pack](https://quaternius.com/packs/universalbasecharacters.html) ghi CC0 | Kiểm tra `LICENSE` trong gói tải trước khi commit; [QAL hiện hành](https://quaternius.com/license.html) cấm phân phối asset như asset độc lập, nên không suy rộng CC0 từ pack này sang pack khác | Chưa dùng |
+| 10 nhân vật hoạt hình | File do người dùng cung cấp trong [thư mục Drive](https://drive.google.com/drive/folders/1UNNT0MeVX0O04RGgu8aLkKe3fwB9_t-A); tên và bộ animation tương ứng [Ultimate Animated Character Pack](https://quaternius.com/packs/ultimatedanimatedcharacter) của Quaternius, trang chính thức ghi CC0 | Chưa có file LICENSE hoặc checksum gói gốc trong thư mục Drive; cần xác nhận nguồn gốc file nếu phân phối độc lập | `apps/web/public/characters/*.gltf` |
 
 Các trang Poly Pizza và Sketchfab là **thư viện nhiều tác giả**; phải xác minh riêng tác giả, URL model, license, yêu cầu ghi công và quyền phân phối cho từng model trước khi tải hoặc commit.
 
@@ -26,4 +27,4 @@ Admin có thể tải GLB/GLTF trực tiếp lên Docker volume `media_data`. T�
 5. [Rojatzo's Gaming Chair](https://rojatzo.itch.io/rojatzos-gaming-chair)
 6. [KayKit Furniture Bits](https://kaylousberg.itch.io/furniture-bits)
 
-Các nguồn có thể yêu cầu thao tác tải trên trang, chọn phiên bản hoặc chấp nhận điều khoản. Không có file nào được tải tự động cho MVP. Khi thêm asset, ghi ngày kiểm tra mới, phiên bản license và đường dẫn từng file vào bảng trên.
+Các nguồn có thể yêu cầu thao tác tải trên trang, chọn phiên bản hoặc chấp nhận điều khoản. Khi thêm asset, ghi ngày kiểm tra mới, phiên bản license và đường dẫn từng file vào bảng trên.

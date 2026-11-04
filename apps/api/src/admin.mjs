@@ -12,6 +12,21 @@ const safeEqual = (left, right) => {
   return timingSafeEqual(a, b);
 };
 
+function youtubeUrl(value) {
+  let url;
+  try { url = new URL(String(value || '').trim()); } catch { throw fail('invalid_youtube_url'); }
+  if (url.protocol !== 'https:') throw fail('invalid_youtube_url');
+  const host = url.hostname.toLowerCase();
+  let id = '';
+  if (host === 'youtu.be') id = url.pathname.slice(1);
+  else if (['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(host)) {
+    if (url.pathname === '/watch') id = url.searchParams.get('v') || '';
+    else if (/^\/(shorts|live|embed)\//.test(url.pathname)) id = url.pathname.split('/')[2] || '';
+  }
+  if (!/^[A-Za-z0-9_-]{11}$/.test(id)) throw fail('invalid_youtube_url');
+  return `https://www.youtube.com/watch?v=${id}`;
+}
+
 async function verifyTurnstile(token) {
   const secret = process.env.TURNSTILE_SECRET_KEY;
   if (!secret || !token) return false;
@@ -126,30 +141,63 @@ export async function adminRoutes(pool, redis, request, response, route) {
   }
   if (!route.startsWith('/api/admin/')) return false;
   if (!(await adminSession(pool, request))) throw fail('admin_required', 401);
+  const pcDetailMatch = /^\/api\/admin\/pc\/(\d{1,3})$/.exec(route);
+  if (pcDetailMatch && method === 'GET') {
+    const stationId = Number(pcDetailMatch[1]);
+    if (stationId < 1 || stationId > 200) throw fail('invalid_station');
+    const [images, top, preview] = await Promise.all([
+      pool.query(`SELECT a.id,a.title,a.image_url,p.nickname FROM art_images a JOIN players p ON p.id=a.player_id
+        WHERE a.station_id=$1 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 20`, [stationId]),
+      pool.query(`SELECT a.id,a.title,a.image_url,p.nickname FROM art_images a JOIN players p ON p.id=a.player_id
+        LEFT JOIN art_votes v ON v.image_id=a.id WHERE a.deleted_at IS NULL
+        GROUP BY a.id,p.id ORDER BY count(v.player_id) FILTER (WHERE v.vote=1) DESC,a.created_at DESC LIMIT 10`),
+      redis.get(`netverse:desktop-preview:${stationId}`),
+    ]);
+    return json(response, 200, { images: images.rows, top: top.rows, preview });
+  }
+  if (route === '/api/admin/overview' && method === 'GET') {
+    const [playersResult, pcResult] = await Promise.all([
+      pool.query(`SELECT p.id,p.username,p.nickname,p.fullname,p.avatar_url,p.character_id,p.balance_seconds,p.online_seconds,p.donated_seconds,p.created_at,
+        (SELECT count(*)::int FROM pc_visitors v WHERE v.player_id=p.id) AS pc_count,
+        (SELECT count(*)::int FROM art_images a WHERE a.player_id=p.id AND a.deleted_at IS NULL) AS art_count
+        FROM players p ORDER BY p.created_at DESC`),
+      pool.query('SELECT station_id,wallpaper_url,browser_url,updated_at FROM pc_states'),
+    ]);
+    const liveKeys = playersResult.rows.map((player) => `netverse:online:${player.id}`);
+    const liveValues = liveKeys.length ? await redis.mGet(liveKeys) : [];
+    const players = playersResult.rows.map((player, index) => {
+      let live = null;
+      try { live = liveValues[index] ? JSON.parse(liveValues[index]) : null; } catch { /* expired state */ }
+      return { ...player, live };
+    });
+    const states = new Map(pcResult.rows.map((pc) => [pc.station_id, pc]));
+    const occupied = new Map(players.filter((player) => player.live?.seatedAt).map((player) => [player.live.seatedAt, player]));
+    const desktopKeys = [...occupied.keys()].map((id) => `netverse:desktop:${id}`);
+    const desktopValues = desktopKeys.length ? await redis.mGet(desktopKeys) : [];
+    const desktops = new Map([...occupied.keys()].map((id, index) => {
+      try { return [id, desktopValues[index] ? JSON.parse(desktopValues[index]) : null]; } catch { return [id, null]; }
+    }));
+    const pcs = Array.from({ length: 200 }, (_, index) => {
+      const stationId = index + 1;
+      const occupant = occupied.get(stationId);
+      return { stationId, ...(states.get(stationId) || {}), userId: occupant?.id || null,
+        nickname: occupant?.nickname || null, desktop: desktops.get(stationId) || null };
+    });
+    return json(response, 200, { players, pcs });
+  }
   if (route === '/api/admin/music' && method === 'GET') {
     const result = await pool.query('SELECT id,title,file_url,created_at FROM music_tracks ORDER BY created_at DESC');
     return json(response, 200, { tracks: result.rows });
   }
   if (route === '/api/admin/music' && method === 'POST') {
-    const data = await body(request, 12_000_000);
+    const data = await body(request);
     const title = String(data.title || '').trim().slice(0, 100);
-    const match = /^data:audio\/(?:mpeg|mp3);base64,([A-Za-z0-9+/=]+)$/.exec(data.audio || '');
-    if (!title || !match) throw fail('invalid_music');
-    const binary = Buffer.from(match[1], 'base64');
-    if (binary.length < 128 || binary.length > 8_000_000 ||
-      !(binary.toString('ascii', 0, 3) === 'ID3' || (binary[0] === 0xff && (binary[1] & 0xe0) === 0xe0)))
-      throw fail('invalid_mp3');
+    if (!title) throw fail('invalid_music');
+    const fileUrl = youtubeUrl(data.youtubeUrl);
     const id = randomUUID();
-    const filename = `music-${id}.mp3`;
-    await mkdir(dataDir, { recursive: true });
-    await writeFile(path.join(dataDir, filename), binary, { flag: 'wx' });
-    try {
-      const result = await pool.query('INSERT INTO music_tracks (id,title,file_url) VALUES ($1,$2,$3) RETURNING *', [id, title, `/api/media/${filename}`]);
-      return json(response, 201, { track: result.rows[0] });
-    } catch (cause) {
-      await unlink(path.join(dataDir, filename)).catch(() => {});
-      throw cause;
-    }
+    const result = await pool.query('INSERT INTO music_tracks (id,title,file_url) VALUES ($1,$2,$3) RETURNING *', [id, title, fileUrl]);
+    await pool.query('UPDATE music_state SET track_id=$1,started_at=now() WHERE id=1', [id]);
+    return json(response, 201, { track: result.rows[0] });
   }
   if (route === '/api/admin/music/play' && method === 'POST') {
     const data = await body(request);
@@ -165,7 +213,8 @@ export async function adminRoutes(pool, redis, request, response, route) {
   if (musicMatch && method === 'POST') {
     const result = await pool.query('DELETE FROM music_tracks WHERE id=$1 RETURNING file_url', [musicMatch[1]]);
     if (!result.rowCount) throw fail('not_found', 404);
-    await unlink(path.join(dataDir, path.basename(result.rows[0].file_url))).catch(() => {});
+    if (result.rows[0].file_url.startsWith('/api/media/music-'))
+      await unlink(path.join(dataDir, path.basename(result.rows[0].file_url))).catch(() => {});
     return json(response, 200, { ok: true });
   }
   if (route === '/api/admin/board' && method === 'GET') {
@@ -291,8 +340,10 @@ export async function adminRoutes(pool, redis, request, response, route) {
       return json(response, 200, { deleted: true });
     }
     const transform = validateObject(data);
+    const replacement = data.assetId ? await pool.query('SELECT asset_url,license FROM asset_catalog WHERE id=$1', [data.assetId]) : null;
+    if (replacement && !replacement.rowCount) throw fail('asset_not_found', 404);
     const result = await pool.query(
-      'UPDATE world_objects SET x=$1,y=$2,z=$3,rotation=$4,scale=$5,published=$6 WHERE id=$7 RETURNING *',
+      'UPDATE world_objects SET x=$1,y=$2,z=$3,rotation=$4,scale=$5,published=$6,asset_url=COALESCE($8,asset_url),license=COALESCE($9,license) WHERE id=$7 RETURNING *',
       [
         transform.x,
         transform.y,
@@ -301,6 +352,8 @@ export async function adminRoutes(pool, redis, request, response, route) {
         transform.scale,
         Boolean(data.published),
         objectMatch[1],
+        replacement?.rows[0]?.asset_url || null,
+        replacement?.rows[0]?.license || null,
       ],
     );
     if (!result.rowCount) throw fail('object_not_found', 404);
