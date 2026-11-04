@@ -1,0 +1,109 @@
+name: netverse3d
+
+services:
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${NETVERSE_HTTP_PORT:-18473}:80"
+    volumes:
+      - ./infra/nginx/netverse.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      web: { condition: service_healthy }
+      api: { condition: service_healthy }
+      game: { condition: service_healthy }
+    networks: [edge]
+
+  web:
+    image: netverse-web:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      labels: { org.netverse.project: netverse-3d }
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    expose: ["3000"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [edge]
+
+  api:
+    image: netverse-api:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      labels: { org.netverse.project: netverse-3d }
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgresql://netverse:${POSTGRES_PASSWORD:?Set_POSTGRES_PASSWORD}@db:5432/netverse
+      REDIS_URL: redis://redis:6379
+    expose: ["4000"]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [edge, data]
+
+  game:
+    image: netverse-game:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/game-server/Dockerfile
+      labels: { org.netverse.project: netverse-3d }
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "2567"
+    expose: ["2567"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:2567/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [edge]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    networks: [data]
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: netverse
+      POSTGRES_DB: netverse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set_POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netverse -d netverse"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    networks: [data]
+
+networks:
+  edge:
+  data: { internal: true }
+
+volumes:
+  db_data:

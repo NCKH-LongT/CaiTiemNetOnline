@@ -4,7 +4,34 @@ Bạn là Lead Full-stack Developer, 3D Game Developer và DevOps Engineer.
 
 Hãy phát triển game quán net online 3D chạy trên trình duyệt.
 
-Repository: (https://github.com/NCKH-LongT/CaiTiemNetOnline.git)
+Repository: https://github.com/truonglongkt2021/CaiTiemNetOnline.git
+
+## MVP đã triển khai
+
+Một phòng 3D với 10 máy, avatar điều khiển bằng WASD/Shift, E để ngồi hoặc đứng, màn hình PC có vùng click, camera theo nhân vật và giao diện PC. Colyseus đồng bộ vị trí, ghế và chat cộng đồng khi game server đang chạy. Nếu server chưa chạy, web vẫn cho phép khám phá một mình. AI, login, admin, Redis session và PostgreSQL persistence nằm ở các giai đoạn tiếp theo.
+
+### Chạy local
+
+```bash
+npm ci
+npm run dev:game   # terminal 1, cổng 2567
+npm run dev        # terminal 2, mở http://localhost:3000
+```
+
+Chạy các gate: `npm run lint && npm run typecheck && npm run test && npm run build`.
+
+### Chạy Docker Compose
+
+Tạo `.env` từ `.env.example` và đặt mật khẩu PostgreSQL URL-safe. Kiểm tra port `18473` trước khi chạy, sau đó:
+
+```bash
+docker compose --env-file .env config --quiet
+docker compose --env-file .env up -d --build
+curl -fsS http://127.0.0.1:18473/health
+docker compose --env-file .env down
+```
+
+Chỉ gateway bind loopback; database và Redis không mở host port. `down` giữ volume dữ liệu. Xem [kiến trúc và giới hạn MVP](docs/ARCHITECTURE.md), [nguồn và giấy phép asset](docs/ASSET_LICENSES.md), [cách thêm GLB](docs/ASSET_INTEGRATION.md), và [guide gốc](NETVERSE_3D_ASSET_GUIDE.md).
 
 ## Công nghệ
 - Next.js, TypeScript

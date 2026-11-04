@@ -1,0 +1,8 @@
+{
+  "name": "@netverse/game-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "node --watch src/index.mjs", "start": "node src/index.mjs" },
+  "dependencies": { "colyseus": "^0.17.8" }
+}
