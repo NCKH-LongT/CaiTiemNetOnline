@@ -7,4 +7,5 @@ dist/
 *.log
 .DS_Store
 coverage/
+infra/jenkins/agent.env
 *.tsbuildinfo

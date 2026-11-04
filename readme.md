@@ -37,3 +37,5 @@ npm run lint && npm run typecheck && npm test && npm run build
 - Admin tải MP3 dưới 8 MB trong mục **Nhạc cộng đồng** rồi chọn phát/dừng. Người chơi nghe cùng bài và có nút bật/tắt riêng; nếu trình duyệt chặn tự phát, bấm **BẬT NHẠC** một lần.
 
 Xem thêm [kiến trúc và giới hạn](docs/ARCHITECTURE.md), [giấy phép asset](docs/ASSET_LICENSES.md), [cách thêm GLB](docs/ASSET_INTEGRATION.md), và [guide gốc](NETVERSE_3D_ASSET_GUIDE.md).
+
+Triển khai bằng Jenkins: xem [hướng dẫn tạo agent và cấu hình CI/CD](docs/JENKINS.md).

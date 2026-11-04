@@ -1,0 +1,23 @@
+name: netverse-jenkins-agent
+
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: infra/jenkins/agent.Dockerfile
+    image: netverse-jenkins-agent:local
+    restart: unless-stopped
+    init: true
+    user: "0:0"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      JENKINS_URL: ${JENKINS_URL:?Set_JENKINS_URL}
+      JENKINS_AGENT_NAME: ${JENKINS_AGENT_NAME:-netverse-docker}
+      JENKINS_SECRET: ${JENKINS_SECRET:?Set_JENKINS_SECRET}
+      JENKINS_WEB_SOCKET: "true"
+      JENKINS_AGENT_WORKDIR: /srv/netverse-jenkins-agent
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/netverse-jenkins-agent:/srv/netverse-jenkins-agent
+      - /srv/netverse-deploy:/srv/netverse-deploy
