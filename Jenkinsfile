@@ -51,10 +51,6 @@ pipeline {
         '''
       }
     }
-    stage('Approve production deploy') {
-      when { environment name: 'DEPLOY_MAIN', value: 'true' }
-      steps { input message: 'Deploy NETVERSE main to production?', ok: 'Deploy' }
-    }
     stage('Build and deploy main') {
       when { environment name: 'DEPLOY_MAIN', value: 'true' }
       steps {
