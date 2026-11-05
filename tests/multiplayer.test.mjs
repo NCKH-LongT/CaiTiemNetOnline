@@ -125,7 +125,7 @@ test('private chat reaches only online peers and snapshots contain no chat histo
     assert.equal(hearts[0][0].messageId, received[1][0].id);
     assert.equal(hearts[2].length, 0);
     await delay(1100);
-    const image = `data:image/webp;base64,${Buffer.alloc(100_000).toString('base64')}`;
+    const image = '/api/media/chat-12345678-1234-1234-1234-123456789abc.webp';
     a.send('chat', { to: b.sessionId, image });
     await waitFor(() => received[1].length === 2);
     assert.equal(received[1][1].image, image);

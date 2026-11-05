@@ -83,6 +83,17 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
+.admin-media { grid-column: 1 / -1; }
+.admin-drive-form { display: flex !important; flex-wrap: wrap; align-items: end; gap: 8px; margin: 12px 0; }
+.admin-drive-form label { flex: 0 0 100%; margin: 0; }
+.admin-drive-form input { flex: 1 1 280px; min-width: 0; }
+.admin-image-list { max-height: 360px; overflow: auto; display: grid; gap: 6px; margin-top: 12px; }
+.admin-image-row { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px; border: 1px solid #a08cce50; border-radius: 7px; }
+.admin-image-row img, .admin-image-orphan { width: 54px; height: 54px; flex: 0 0 54px; object-fit: cover; border-radius: 5px; background: #443b62; }
+.admin-image-orphan { display: grid; place-items: center; font-size: 10px; }
+.admin-image-row > span:nth-child(2) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.admin-image-row strong, .admin-image-row small { display: block; }
+@media (max-width: 600px) { .admin-image-row { flex-wrap: wrap; } .admin-image-row > small { margin-left: 64px; } }
 .admin-music form, .admin-music-list { display: grid; gap: 8px; }
 .admin-music form { grid-template-columns: minmax(120px, 1fr) minmax(160px, 1fr) auto; margin: 12px 0; }
 .admin-music form { grid-template-columns: minmax(120px, 1fr) minmax(160px, 1fr) minmax(110px, 1fr) auto; }

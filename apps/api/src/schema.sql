@@ -86,6 +86,28 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
   token_hash text PRIMARY KEY,
   expires_at timestamptz NOT NULL
 );
+CREATE TABLE IF NOT EXISTS chat_images (
+  id uuid PRIMARY KEY,
+  player_id uuid NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  image_url text NOT NULL UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS chat_images_created_at ON chat_images (created_at DESC);
+CREATE TABLE IF NOT EXISTS media_backup_settings (
+  id integer PRIMARY KEY CHECK (id = 1),
+  folder_id text NOT NULL DEFAULT '',
+  last_run_at timestamptz,
+  last_error text
+);
+INSERT INTO media_backup_settings (id) VALUES (1) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS media_backups (
+  filename text NOT NULL,
+  folder_id text NOT NULL,
+  drive_file_id text NOT NULL,
+  backed_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (filename, folder_id)
+);
 CREATE TABLE IF NOT EXISTS music_tracks (
   id uuid PRIMARY KEY,
   title text NOT NULL,

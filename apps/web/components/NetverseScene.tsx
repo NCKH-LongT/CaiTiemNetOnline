@@ -150,7 +150,7 @@ function AvatarTag({
     };
   }, [name, fullname, avatarUrl, balanceSeconds, onlineSeconds, badge]);
   return <>
-    {texture && <sprite position={[0, 2.45, 0]} scale={[2.2, 0.77, 1]}>
+    {texture && <sprite position={[0, 2.36, 0]} scale={[1.85, 0.65, 1]}>
       <spriteMaterial map={texture} transparent depthTest={false} />
     </sprite>}
     {badgeUrl && <BadgeSprite url={badgeUrl} />}
@@ -542,8 +542,9 @@ function World(props: Props) {
       if (strafe || forward) {
         movementAmount.current = props.heldKeys.current.has('shift') ? 1.7 : 1;
         const length = Math.hypot(strafe, forward);
-        const dx = strafe / length;
-        const dz = -forward / length;
+        const yaw = props.orbit.current.yaw;
+        const dx = (strafe * Math.cos(yaw) - forward * Math.sin(yaw)) / length;
+        const dz = (-strafe * Math.sin(yaw) - forward * Math.cos(yaw)) / length;
         const speed = props.heldKeys.current.has('shift') ? 5 : 3.1;
         const nextX = position[0] + dx * speed * Math.min(delta, 0.05);
         const nextZ = position[2] + dz * speed * Math.min(delta, 0.05);
@@ -608,7 +609,18 @@ function World(props: Props) {
         current[2],
       );
     }
+    // Keep the camera inside the room, even while it catches up after an orbit turn.
+    const cameraWallX = worldBounds.halfWidth + 0.5;
+    const cameraWallZ = worldBounds.halfLength + 0.5;
+    target.current.x = THREE.MathUtils.clamp(target.current.x, -cameraWallX, cameraWallX);
+    target.current.z = THREE.MathUtils.clamp(target.current.z, -cameraWallZ, cameraWallZ);
+    target.current.y = THREE.MathUtils.clamp(target.current.y, 0.35, 6.15);
     camera.position.lerp(target.current, Math.min(1, delta * 3.2));
+    camera.position.set(
+      THREE.MathUtils.clamp(camera.position.x, -cameraWallX, cameraWallX),
+      THREE.MathUtils.clamp(camera.position.y, 0.35, 6.15),
+      THREE.MathUtils.clamp(camera.position.z, -cameraWallZ, cameraWallZ),
+    );
     cameraLook.current.lerp(cameraTarget.current, Math.min(1, delta * 5));
     camera.lookAt(cameraLook.current);
   });

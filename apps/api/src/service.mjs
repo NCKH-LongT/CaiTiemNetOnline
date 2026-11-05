@@ -113,7 +113,7 @@ export async function serveMedia(response, filename, request) {
         gltf: 'model/gltf+json',
         mp3: 'audio/mpeg',
       }[ext],
-      'cache-control': 'public, max-age=86400',
+      'cache-control': filename.startsWith('chat-') ? 'private, no-store' : 'public, max-age=86400',
       'x-content-type-options': 'nosniff',
       'content-length': end - start + 1,
       ...(ext === 'mp3' ? { 'accept-ranges': 'bytes' } : {}),
@@ -126,6 +126,19 @@ export async function serveMedia(response, filename, request) {
 }
 export async function playerRoutes(pool, redis, request, response, route) {
   const method = request.method;
+  if (route === '/api/chat/image' && method === 'POST') {
+    const player = await session(pool, request);
+    if (!player) throw error('login_required', 401);
+    const data = await body(request);
+    const imageUrl = await storeImage(data.image, 'chat');
+    try {
+      await pool.query('INSERT INTO chat_images (id,player_id,image_url) VALUES ($1,$2,$3)', [randomUUID(), player.id, imageUrl]);
+    } catch (cause) {
+      await unlink(path.join(dataDir, path.basename(imageUrl))).catch(() => {});
+      throw cause;
+    }
+    return json(response, 201, { imageUrl });
+  }
   if (route === '/api/auth/register' && method === 'POST') {
     const data = await body(request);
     const username = String(data.username || '').trim();

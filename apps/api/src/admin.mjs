@@ -2,6 +2,7 @@ import { mkdir, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import { adminSession, body, json, storeImage } from './service.mjs';
+import { deleteManagedImage, imageInventory, startImageBackup } from './media-manager.mjs';
 import { cookie, hashToken, newToken, setCookie } from './security.mjs';
 import world from '../../../shared/world.json' with { type: 'json' };
 
@@ -136,6 +137,27 @@ export async function adminRoutes(pool, redis, request, response, route) {
   }
   if (!route.startsWith('/api/admin/')) return false;
   if (!(await adminSession(pool, request))) throw fail('admin_required', 401);
+  if (route === '/api/admin/media' && method === 'GET')
+    return json(response, 200, await imageInventory(pool));
+  if (route === '/api/admin/media/drive' && method === 'POST') {
+    const data = await body(request);
+    const folderId = String(data.folderId || '').trim();
+    if (folderId && !/^[A-Za-z0-9_-]{10,128}$/.test(folderId)) throw fail('invalid_drive_folder');
+    await pool.query('UPDATE media_backup_settings SET folder_id=$1,last_error=NULL WHERE id=1', [folderId]);
+    if (folderId) startImageBackup(pool);
+    return json(response, 200, { ok: true });
+  }
+  if (route === '/api/admin/media/backup' && method === 'POST') {
+    const started = startImageBackup(pool);
+    if (!started) throw fail('drive_not_configured_or_busy', 409);
+    return json(response, 202, { started: true });
+  }
+  const managedImage = /^\/api\/admin\/media\/([a-z]+-[0-9a-f-]{36}\.(?:png|jpg|webp|gif))$/.exec(route);
+  if (managedImage && method === 'POST') {
+    const deleted = await deleteManagedImage(pool, managedImage[1]);
+    if (!deleted) throw fail('image_in_use_or_missing', 409);
+    return json(response, 200, { ok: true });
+  }
   const pcDetailMatch = /^\/api\/admin\/pc\/(\d{1,3})$/.exec(route);
   if (pcDetailMatch && method === 'GET') {
     const stationId = Number(pcDetailMatch[1]);

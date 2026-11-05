@@ -726,18 +726,24 @@
   padding: 11px;
 }
 .chat-view form label {
-  padding: 8px 12px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  padding: 0;
   border: 1px solid #ffffff33;
   border-radius: 7px;
   cursor: pointer;
 }
 .chat-view form button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
   border: 0;
   border-radius: 7px;
   background: #8d74d9;
   color: #171426;
   font-weight: 700;
-  padding: 0 17px;
+  padding: 0;
 }
 .pending-image {
   font-size: 11px;

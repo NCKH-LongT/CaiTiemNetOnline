@@ -38,6 +38,8 @@ type Proposal = {
 type Config = { sitekey: string | null; configured: boolean; gemini: boolean };
 type Board = { background_url: string | null; background_color: string };
 type MusicTrack = { id: string; title: string; file_url: string; created_at: string };
+type ManagedImage = { filename: string; url: string; bytes: number; createdAt: string; usage: string[]; backedAt: string | null };
+type MediaInventory = { images: ManagedImage[]; totalBytes: number; orphanCount: number; pendingCount: number; drive: { folderId: string; configured: boolean; running: boolean; lastRunAt: string | null; lastError: string | null } };
 type AdminPlayer = { id: string; username: string; nickname: string; fullname: string; avatar_url: string | null; balance_seconds: number; online_seconds: number; donated_seconds: number; pc_count: number; art_count: number; created_at: string; live: { sessionId: string; seatedAt: number | null; onlineSeconds: number; seatedSeconds: number } | null };
 type AdminPc = { stationId: number; wallpaper_url?: string | null; browser_url?: string | null; userId: string | null; nickname: string | null; desktop: { tab: string; browserUrl?: string | null; updatedAt: number } | null };
 type AdminArt = { id: string; title: string; image_url: string; nickname: string };
@@ -127,6 +129,9 @@ export default function AdminConsole() {
   const [musicTitle, setMusicTitle] = useState('');
   const [musicUrl, setMusicUrl] = useState('');
   const [musicFile, setMusicFile] = useState<File | null>(null);
+  const [media, setMedia] = useState<MediaInventory | null>(null);
+  const [driveFolder, setDriveFolder] = useState('');
+  const driveFolderLoaded = useRef(false);
   const [adminPlayers, setAdminPlayers] = useState<AdminPlayer[]>([]);
   const [playerFilter, setPlayerFilter] = useState<'all' | 'online' | 'seated'>('all');
   const [playerSearch, setPlayerSearch] = useState('');
@@ -178,6 +183,23 @@ export default function AdminConsole() {
       .catch(() => {});
     return () => { active = false; if (retry) clearTimeout(retry); };
   }, []);
+  useEffect(() => {
+    if (!admin) return;
+    let active = true;
+    const refresh = () => api<MediaInventory>('/api/admin/media')
+      .then((result) => {
+        if (!active) return;
+        setMedia(result);
+        if (!driveFolderLoaded.current) {
+          setDriveFolder(result.drive.folderId);
+          driveFolderLoaded.current = true;
+        }
+      })
+      .catch((error) => { if (active) setNotice(`Không tải được ảnh: ${(error as Error).message}`); });
+    void refresh();
+    const timer = setInterval(refresh, 15000);
+    return () => { active = false; clearInterval(timer); };
+  }, [admin]);
   useEffect(() => {
     if (!admin) return;
     let active = true;
@@ -312,6 +334,30 @@ export default function AdminConsole() {
       setMusicTracks((current) => current.filter((item) => item.id !== track.id));
       if (playingTrack === track.id) setPlayingTrack(null);
       setNotice('Đã xóa bài nhạc.');
+    } catch (error) { setNotice((error as Error).message); }
+  };
+  const refreshMedia = async () => setMedia(await api<MediaInventory>('/api/admin/media'));
+  const saveDriveFolder = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      await api('/api/admin/media/drive', { folderId: driveFolder });
+      await refreshMedia();
+      setNotice('Đã lưu thư mục Drive.');
+    } catch (error) { setNotice((error as Error).message); }
+  };
+  const backupImages = async () => {
+    try {
+      await api('/api/admin/media/backup', {});
+      await refreshMedia();
+      setNotice('Đã bắt đầu sao lưu ảnh lên Google Drive.');
+    } catch (error) { setNotice((error as Error).message); }
+  };
+  const deleteImage = async (image: ManagedImage) => {
+    if (!window.confirm(`Xóa ${image.filename} khỏi server? Ảnh chat đã gửi sẽ không còn hiển thị.`)) return;
+    try {
+      await api(`/api/admin/media/${image.filename}`, {});
+      await refreshMedia();
+      setNotice('Đã xóa ảnh khỏi server.');
     } catch (error) { setNotice((error as Error).message); }
   };
   const uploadAsset = async (event: React.FormEvent) => {
@@ -522,6 +568,30 @@ export default function AdminConsole() {
         </form>
       ) : (
         <div className="admin-grid">
+          <section className="admin-card admin-media">
+            <h2>Quản lý ảnh và dung lượng</h2>
+            {media ? <>
+              <p>{media.images.length} ảnh · {(media.totalBytes / 1024 / 1024).toFixed(2)} MB · {media.orphanCount} ảnh không còn sử dụng · {media.pendingCount} ảnh chưa sao lưu vào thư mục hiện tại</p>
+              <form className="admin-drive-form" onSubmit={saveDriveFolder}>
+                <label htmlFor="drive-folder">ID thư mục Google Drive để sao lưu</label>
+                <input id="drive-folder" value={driveFolder} onChange={(event) => setDriveFolder(event.target.value)} placeholder="ID trong đường dẫn drive.google.com/drive/folders/..." />
+                <button type="submit">LƯU THƯ MỤC</button>
+                <button type="button" onClick={backupImages} disabled={!media.drive.configured || !media.drive.folderId || media.drive.running}>SAO LƯU NGAY</button>
+              </form>
+              {!media.drive.configured && <p>Để bật sao lưu, cấu hình GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET và GOOGLE_DRIVE_REFRESH_TOKEN trên máy API. Sau đó nhập ID thư mục Drive ở đây.</p>}
+              {media.drive.running && <p>Đang sao lưu tối đa 10 ảnh mỗi lượt...</p>}
+              {media.drive.lastError && <p role="alert">Lỗi sao lưu: {media.drive.lastError}</p>}
+              {media.drive.lastRunAt && <small>Lần chạy gần nhất: {new Date(media.drive.lastRunAt).toLocaleString('vi-VN')}</small>}
+              <div className="admin-image-list">
+                {media.images.map((image) => <div key={image.filename} className="admin-image-row">
+                  {image.usage.length ? <Image unoptimized src={image.url} alt="" width={54} height={54} /> : <span className="admin-image-orphan">Ảnh cũ</span>}
+                  <span><strong>{image.usage.join(', ') || 'Không còn sử dụng'}</strong><small>{image.filename} · {(image.bytes / 1024).toFixed(1)} KB · {new Date(image.createdAt).toLocaleDateString('vi-VN')}</small></span>
+                  <small>{image.backedAt ? 'Đã sao lưu' : 'Chưa sao lưu'}</small>
+                  {(!image.usage.length || (image.usage.length === 1 && image.usage[0] === 'Ảnh chat')) && <button type="button" onClick={() => deleteImage(image)}>XÓA</button>}
+                </div>)}
+              </div>
+            </> : <p>Đang tải danh sách ảnh...</p>}
+          </section>
           <section className="admin-card admin-overview">
             <h2>Người chơi ({adminPlayers.length})</h2>
             <p>{adminPlayers.filter((item) => item.live).length} người online · nhấn người chơi đang sử dụng PC để xem desktop.</p>

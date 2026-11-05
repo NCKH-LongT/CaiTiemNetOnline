@@ -237,17 +237,19 @@ export class CafeRoom extends Room {
       client.send('seat', { stationId: null, x: player.x, z: player.z });
       this.sendSnapshot();
     });
-    this.onMessage('chat', (client, data) => {
+    this.onMessage('chat', async (client, data) => {
       const player = this.players.get(client.sessionId);
       const text = typeof data?.text === 'string' ? data.text.trim().slice(0, 240) : '';
-      const image =
-        typeof data?.image === 'string' &&
-        /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(data.image) &&
-        data.image.length < 180000
+      const image = typeof data?.image === 'string' &&
+        /^\/api\/media\/chat-[0-9a-f-]{36}\.(png|jpg|webp)$/.test(data.image)
           ? data.image
           : null;
       if (!player || (!text && !image) || Date.now() - (player.lastChat ?? 0) < 1000) return;
       player.lastChat = Date.now();
+      if (image && pool) {
+        const owned = await pool.query('SELECT 1 FROM chat_images WHERE image_url=$1 AND player_id=$2 AND deleted_at IS NULL', [image, player.userId]);
+        if (!owned.rowCount) return;
+      }
       const target =
         typeof data?.to === 'string'
           ? this.clients.find((peer) => peer.sessionId === data.to)

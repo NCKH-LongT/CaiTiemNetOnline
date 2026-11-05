@@ -6,6 +6,7 @@ import pg from 'pg';
 import { createClient } from 'redis';
 import { checkOrigin, contentRoutes, json, playerRoutes, serveMedia } from './service.mjs';
 import { adminRoutes } from './admin.mjs';
+import { startImageBackup } from './media-manager.mjs';
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const redis = createClient({ url: process.env.REDIS_URL });
@@ -27,6 +28,13 @@ const server = http.createServer((request, response) => {
       if (route.startsWith('/api/media/art-')) {
         const exists = await pool.query(
           'SELECT 1 FROM art_images WHERE image_url=$1 AND deleted_at IS NULL',
+          [route],
+        );
+        if (!exists.rowCount) return json(response, 404, { error: 'not_found' });
+      }
+      if (route.startsWith('/api/media/chat-')) {
+        const exists = await pool.query(
+          'SELECT 1 FROM chat_images WHERE image_url=$1 AND deleted_at IS NULL',
           [route],
         );
         if (!exists.rowCount) return json(response, 404, { error: 'not_found' });
@@ -59,7 +67,10 @@ const server = http.createServer((request, response) => {
 await redis.connect();
 await pool.query(schema);
 server.listen(Number(process.env.PORT || 4000), '0.0.0.0');
+const backupTimer = setInterval(() => startImageBackup(pool), 5 * 60 * 1000);
+setTimeout(() => startImageBackup(pool), 30 * 1000).unref();
 process.on('SIGTERM', async () => {
+  clearInterval(backupTimer);
   server.close();
   await Promise.all([redis.quit(), pool.end()]);
 });

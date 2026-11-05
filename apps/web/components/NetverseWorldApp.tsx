@@ -557,7 +557,8 @@ export default function NetverseWorldApp() {
   const sendImage = async (file: File) => {
     try {
       const data = await compressChatImage(file);
-      setPendingImage(data);
+      const result = await api<{ imageUrl: string }>('/api/chat/image', { image: data });
+      setPendingImage(result.imageUrl);
     } catch (error) {
       setNotice((error as Error).message);
     }
@@ -861,7 +862,7 @@ export default function NetverseWorldApp() {
                       placeholder="Nhắn cho người đang online..."
                       maxLength={240}
                     />
-                    <button disabled={connection !== 'online' || Boolean(chatTarget && !players.some((item) => item.userId === chatTarget.userId))}>GỬI</button>
+                    <button type="submit" aria-label="Gửi tin nhắn" title="Gửi tin nhắn" disabled={connection !== 'online' || Boolean(chatTarget && !players.some((item) => item.userId === chatTarget.userId))}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg></button>
                   </form>
                 </div>
               </div>
