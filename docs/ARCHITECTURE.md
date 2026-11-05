@@ -4,14 +4,15 @@
 
 | Dịch vụ | Trách nhiệm |
 | --- | --- |
-| Next.js + React Three Fiber | Bản đồ 200 máy, camera sau nhân vật, PC giả lập, cộng đồng, admin editor |
+| Next.js + React Three Fiber | Bản đồ 500 máy, camera sau nhân vật, PC giả lập, cộng đồng, admin editor |
 | Colyseus | Vị trí, ghế, thời gian chơi, chat online 1:1 và phòng chung |
 | Node API | Tài khoản, hồ sơ, vị trí Save, trạng thái PC, ảnh, vote, phút tặng, bảng vàng, nhạc chung, admin |
 | PostgreSQL | Dữ liệu người chơi, PC, ảnh, vote, vật thể và cấp nghệ sĩ |
 | Redis | Giới hạn đăng nhập admin và xác thực phiên ngồi máy cho API |
-| Nginx | Chỉ bind `127.0.0.1:18473`; chuyển `/api`, `/socket` và web |
+| Voice signaling | Vé một lần, xác định người trong bán kính 12 và báo hiệu WebRTC; không chuyển luồng âm thanh |
+| Nginx | Chỉ bind `127.0.0.1:18473`; chuyển `/api`, `/socket`, `/voice` và web |
 
-`shared/world.json` được tạo bởi `tools/generate-world.mjs` và dùng chung ở web/game server. Bản đồ gồm 5 hành lang × 20 hàng × 2 bên. Frontend chỉ dựng các máy gần avatar. Vị trí ghế và điều kiện chiếm ghế được kiểm tra tại game server.
+`shared/world.json` được tạo bởi `tools/generate-world.mjs` và dùng chung ở web/game server. Bản đồ gồm 10 hành lang × 25 hàng × 2 bên. Frontend chỉ dựng các máy gần avatar. Vị trí ghế và điều kiện chiếm ghế được kiểm tra tại game server.
 
 ## Dữ liệu và quyền
 
@@ -21,16 +22,19 @@
 - Tác giả nhận 600 giây cho mỗi lượt thích hợp lệ. Mỗi tài khoản chỉ vote một lần trên ảnh, không tự vote. Unlike đòi hỏi đã dùng PC từ lúc ảnh đăng. Ảnh bị xóa khi có ít nhất 5 người dùng PC kể từ lúc đăng và số unlike lớn hơn một nửa số đó.
 - Album PC và top tranh trả về ID tác giả để giao diện mở profile công khai (nickname, tên, avatar, cấp nghệ sĩ, số tranh/lượt thích, thời gian online). Popup ảnh và profile hiển thị trên toàn màn hình. Chat riêng chỉ mở được khi tác giả còn trong phòng online; nội dung chat vẫn theo phiên Colyseus hiện tại.
 - Admin dùng tài khoản `.env`, Cloudflare Turnstile Siteverify ở server và giới hạn 8 lần thử/15 phút theo địa chỉ IP. Test key Turnstile trong `.env.example` chỉ dùng local. Model chỉ nhận upload GLB/GLTF tự chứa dữ liệu, tối đa 10 MB, có giấy phép; admin xem trước, cân kích thước và xuất bản.
-- Admin tải MP3 tối đa 8 MB lên volume `media_data`. PostgreSQL lưu bài đang phát và thời điểm bắt đầu; client hỏi trạng thái mỗi 3 giây và căn thời điểm phát theo đồng hồ. Mỗi người lưu tùy chọn tắt nhạc trong localStorage. Trình duyệt có thể yêu cầu một thao tác bấm trước khi phát âm thanh.
+- Admin tải MP3 tối đa 8 MB lên volume `media_data` hoặc nhập URL âm thanh HTTPS trực tiếp. PostgreSQL lưu bài đang phát và thời điểm bắt đầu; client hỏi trạng thái mỗi 3 giây và căn thời điểm phát theo đồng hồ. Nhạc mặc định bật cho người mới; mỗi người lưu tùy chọn tắt nhạc trong localStorage. Trình duyệt có thể yêu cầu một thao tác bấm trước khi phát âm thanh. Bài YouTube cũ không phát ẩn được và cần được admin thay nguồn.
 - Browser trong PC chuyển URL video YouTube/TikTok sang player nhúng chính thức. Các URL HTTPS khác chỉ hiển thị nếu website đích cho phép iframe. Nhiều báo điện tử từ chối nhúng qua `X-Frame-Options` hoặc CSP; người dùng có thể mở trang trong tab ngoài.
 
 ## Giới hạn đang biết
 
-- Mỗi game server process quản lý một phòng tối đa 250 người (200 máy và 50 chỗ chờ). Chưa có phân vùng nhiều phòng hoặc chuyển server khi tăng quy mô.
+- Mỗi game server process quản lý một phòng với giới hạn cấu hình 600 người (500 máy và 100 chỗ chờ; chưa kiểm tải ở mức này). Chưa có phân vùng nhiều phòng hoặc chuyển server khi tăng quy mô.
 - Phút chơi được ghi sau mỗi 5 giây và khi đứng dậy/rời phòng; nếu process sập đột ngột có thể sai lệch tối đa khoảng 5 giây.
 - Asset GLTF chứa URI ngoài không được nhập. Một số model quá nặng có thể làm giảm FPS dù frontend chỉ render máy gần người chơi.
 - Gemini cần `GEMINI_API_KEY` của người dùng. API chỉ trả phương án bố trí; admin phải duyệt từng vật thể trước khi công bố.
 - Local Docker chỉ bind loopback; chưa cấu hình HTTPS/Turnstile production và chưa chạy kiểm tải 200 người đồng thời.
+- Voice P2P hiện dùng STUN; một số mạng cần TURN. Chưa kiểm tải voice ở phòng đông hoặc triển khai SFU.
+
+Xem [kế hoạch tách dịch vụ](SERVICE_ARCHITECTURE.md) để chuyển billing, admin và realtime thành các process độc lập.
 
 ## Chạy
 

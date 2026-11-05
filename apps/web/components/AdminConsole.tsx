@@ -286,7 +286,7 @@ export default function AdminConsole() {
           reader.readAsDataURL(musicFile);
         });
       }
-      const result = await api<{ track: MusicTrack }>('/api/admin/music', { title: musicTitle, youtubeUrl: musicUrl, audio });
+      const result = await api<{ track: MusicTrack }>('/api/admin/music', { title: musicTitle, audioUrl: musicUrl || undefined, audio });
       setMusicTracks((current) => [result.track, ...current]);
       setPlayingTrack(result.track.id);
       setMusicTitle('');
@@ -294,7 +294,10 @@ export default function AdminConsole() {
       setMusicFile(null);
       formElement.reset();
       setNotice('Đã thêm và phát nhạc cho cộng đồng.');
-    } catch (error) { setNotice((error as Error).message); }
+    } catch (error) {
+      const message = (error as Error).message;
+      setNotice(message === 'invalid_audio_url' ? 'Hãy dùng URL HTTPS dẫn trực tiếp tới âm thanh; link trang YouTube/Spotify không phát ẩn được.' : message);
+    }
   };
   const playMusic = async (trackId: string | null) => {
     try {
@@ -567,17 +570,17 @@ export default function AdminConsole() {
           </section>
           <section className="admin-card admin-music">
             <h2>Nhạc cộng đồng</h2>
-            <p>Tải MP3 để phát âm thanh nền đồng bộ, hoặc thêm link YouTube để phát khi người chơi mở video.</p>
+            <p>Tải MP3 hoặc dán URL âm thanh HTTPS trực tiếp (MP3, OGG, luồng radio tương thích trình duyệt). Link trang YouTube/Spotify không phát ẩn được.</p>
             <form onSubmit={uploadMusic}>
               <input value={musicTitle} onChange={(event) => setMusicTitle(event.target.value)} placeholder="Tên bài nhạc" required maxLength={100} aria-label="Tên bài nhạc" />
-              <input type="url" value={musicUrl} onChange={(event) => setMusicUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." required={!musicFile} aria-label="Link YouTube" />
+              <input type="url" value={musicUrl} onChange={(event) => setMusicUrl(event.target.value)} placeholder="https://example.com/music.mp3" required={!musicFile} aria-label="URL âm thanh trực tiếp" />
               <input type="file" accept="audio/mpeg,.mp3" onChange={(event) => setMusicFile(event.target.files?.[0] || null)} aria-label="Tải MP3" />
               <button type="submit">THÊM NHẠC</button>
             </form>
             <div className="admin-music-list">
               {musicTracks.map((track) => <div key={track.id}>
                 <strong>{track.title}</strong>
-                <button onClick={() => playMusic(track.id)} disabled={playingTrack === track.id}>{playingTrack === track.id ? 'ĐANG PHÁT' : 'PHÁT'}</button>
+                <button onClick={() => playMusic(track.id)} disabled={playingTrack === track.id || /^https:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(track.file_url)}>{/^https:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(track.file_url) ? 'CẦN THAY LINK' : playingTrack === track.id ? 'ĐANG PHÁT' : 'PHÁT'}</button>
                 <button onClick={() => deleteMusic(track)}>XÓA</button>
               </div>)}
               {!musicTracks.length && <p>Chưa tải bài nhạc nào.</p>}

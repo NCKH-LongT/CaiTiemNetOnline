@@ -1,6 +1,6 @@
 import { readFile, mkdir, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac } from 'node:crypto';
 import characters from '../../../shared/characters.json' with { type: 'json' };
 import world from '../../../shared/world.json' with { type: 'json' };
 import {
@@ -190,6 +190,22 @@ export async function playerRoutes(pool, redis, request, response, route) {
     const ticket = newToken();
     await redis.set(`netverse:ticket:${ticket}`, player.id, { EX: 30 });
     return json(response, 200, { ticket, player });
+  }
+  if (route === '/api/voice/ticket' && method === 'GET') {
+    const player = await session(pool, request);
+    if (!player) throw error('login_required', 401);
+    const ticket = newToken();
+    await redis.set(`netverse:voice-ticket:${ticket}`, player.id, { EX: 30 });
+    const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+    if (process.env.VOICE_TURN_URL && process.env.VOICE_TURN_SECRET) {
+      const username = `${Math.floor(Date.now() / 1000) + 3600}:${player.id}`;
+      iceServers.push({
+        urls: process.env.VOICE_TURN_URL,
+        username,
+        credential: createHmac('sha1', process.env.VOICE_TURN_SECRET).update(username).digest('base64'),
+      });
+    }
+    return json(response, 200, { ticket, iceServers });
   }
   const player = await session(pool, request);
   if (route === '/api/player/artist' && method === 'GET') {

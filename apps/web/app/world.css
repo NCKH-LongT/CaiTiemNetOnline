@@ -27,15 +27,21 @@
   color: #f1e9ff;
   font-size: 10px;
 }
+.header-audio { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; }
+.voice-controls { position: relative; display: flex; gap: 4px; flex: none; }
+.voice-controls button, .music-resume { min-height: 32px; padding: 5px 8px; border: 1px solid #b6a0e440; border-radius: 7px; background: #171628cc; color: #ddd2ee; font-size: 11px; white-space: nowrap; }
+.voice-controls button.selected { border-color: #9debd2; color: #b7f1df; }
+.voice-controls button:disabled { opacity: .45; cursor: default; }
+.voice-status { position: absolute; top: 38px; right: 0; width: 235px; padding: 8px; border: 1px solid #b6a0e440; border-radius: 6px; background: #241f38; color: #fff; font-size: 11px; z-index: 10; }
+.music-resume { position: absolute; top: 37px; right: 0; z-index: 10; }
+.music-warning { padding: 0 3px; border: 0; background: transparent; color: #e3bf83; font-size: 13px; cursor: pointer; }
+.music-warning-note { position: absolute; top: 39px; left: 0; z-index: 10; width: 240px; padding: 9px; border: 1px solid #b6a0e440; border-radius: 7px; background: #241f38; color: #fff; font-size: 11px; }
 .music-toggle, .music-volume { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 .music-toggle { cursor: pointer; }
 .music-toggle input { width: 16px; height: 16px; margin: 0; accent-color: #9debd2; cursor: pointer; }
 .music-toggle input:disabled { cursor: default; opacity: .5; }
 .music-volume input { width: 70px; margin: 0; accent-color: #9debd2; }
 .music-volume output { min-width: 28px; color: #d5cae7; font-size: 9px; text-align: right; }
-.music-player { position: fixed; z-index: 7; top: 64px; right: 16px; width: 230px; padding: 4px; border: 1px solid #b6a0e440; border-radius: 9px; background: #171628f5; box-shadow: 0 14px 30px #090719aa; }
-.music-player iframe { display: block; width: 220px; height: 220px; border: 0; }
-.music-player small { display: block; overflow: hidden; padding: 5px 3px 2px; color: #c9bddb; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .netverse-canvas { width: 100%; height: 100%; }
 .browser-shortcuts { flex: none; max-height: 230px; overflow: auto; margin-bottom: 10px; padding: 7px; border: 1px solid #a28be155; border-radius: 8px; }
 .browser-shortcuts h3 { font-size: 11px; margin: 4px 0 7px; }
@@ -57,6 +63,9 @@
 .character-picker > div { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; max-height: 170px; overflow: auto; }
 .character-picker button { padding: 8px; border: 1px solid #a28be155; border-radius: 5px; color: #eee; background: #ffffff12; text-align: left; }
 .character-picker button.selected { border-color: #9debd2; color: #9debd2; }
+.character-preview { position: relative; height: 220px; margin: 8px 0 12px; overflow: hidden; border: 1px solid #a28be155; border-radius: 10px; background: radial-gradient(circle at center, #514475, #171629 72%); }
+.character-preview canvas { width: 100%; height: 100%; }
+.character-preview span { position: absolute; right: 10px; bottom: 9px; padding: 4px 8px; border-radius: 5px; background: #171629c9; color: #f5edff; font-size: 12px; pointer-events: none; }
 .wall-art-overlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: #06050add; }
 .wall-art-overlay section { position: relative; width: min(1000px, 95vw); height: min(85vh, 800px); padding: 20px; background: #201d35; border: 1px solid #b49bdf; border-radius: 12px; }
 .wall-art-overlay section > button { position: absolute; right: 8px; top: 8px; z-index: 1; border: 0; background: #332a4d; color: #fff; font-size: 24px; }
@@ -205,7 +214,7 @@
 .desktop-tools h2 {
   margin: 0;
   font:
-    600 25px 'Space Grotesk',
+    600 25px 'Be Vietnam Pro',
     sans-serif;
 }
 .desktop-tools p,
@@ -590,20 +599,20 @@
 .social-panel h2,
 .ranking-panel h2 {
   font:
-    600 24px 'Space Grotesk',
+    600 24px 'Be Vietnam Pro',
     sans-serif;
   margin: 0 0 14px;
 }
 .social-panel h2 small {
   font:
-    500 12px 'DM Sans',
+    500 12px 'Be Vietnam Pro',
     sans-serif;
   color: #91dec7;
   margin-left: 12px;
 }
 .social-layout {
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 180px minmax(0, 1fr);
   gap: 15px;
   min-height: 0;
   flex: 1;
@@ -647,6 +656,7 @@
   margin-left: auto;
 }
 .chat-view {
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -656,8 +666,10 @@
   margin: 0 0 10px;
 }
 .chat-messages {
+  min-width: 0;
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid #ffffff18;
   border-radius: 8px;
   padding: 12px;
@@ -667,19 +679,30 @@
   color: #aba2b9;
 }
 .chat-messages article {
+  width: fit-content;
+  max-width: 80%;
+  min-width: 0;
   margin-bottom: 13px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: #342b4a;
+  overflow-wrap: anywhere;
 }
+.chat-messages article.chat-own { margin-left: auto; border-bottom-right-radius: 3px; background: #38554f; }
+.chat-messages article.chat-other { margin-right: auto; border-bottom-left-radius: 3px; }
+.chat-messages article.chat-own b { color: #bdf5de; }
 .chat-messages b {
   display: block;
   color: #9ee5d0;
   font-size: 11px;
 }
-.chat-messages b { display: flex; align-items: center; gap: 5px; }
+.chat-messages b { display: flex; align-items: center; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
 .chat-messages time { display: block; margin: 4px 0; color: #9d94ae; font-size: 10px; }
 .heart-button { display: block; margin-top: 6px; padding: 3px 7px; border: 1px solid #ffffff30; border-radius: 5px; background: transparent; color: #bbaacb; font-size: 11px; }
 .heart-button.selected { color: #ff9caa; border-color: #ff9caa; }
 .chat-messages span {
-  font-size: 12px;
+  font-size: 15px;
+  line-height: 1.5;
 }
 .chat-messages img {
   display: block;
@@ -841,6 +864,8 @@
 }
 .profile-modal {
   max-width: 430px;
+  max-height: calc(100dvh - 30px);
+  overflow-y: auto;
 }
 .profile-modal label {
   display: block;
@@ -896,7 +921,7 @@
     padding: 14px;
   }
   .social-layout {
-    grid-template-columns: 115px 1fr;
+    grid-template-columns: 115px minmax(0, 1fr);
   }
   .online-list small {
     display: none;
@@ -924,7 +949,7 @@
     font-size: 9px;
   }
   .social-layout {
-    grid-template-columns: 80px 1fr;
+    grid-template-columns: 80px minmax(0, 1fr);
     gap: 7px;
   }
   .social-panel h2 {
@@ -968,11 +993,12 @@
   .main-tabs .unread-badge { position: absolute; top: 2px; right: max(8px, 20%); }
   .main-tabs .nav-online-count { display: none; }
   .footer { display: none; }
-  .pc-panel, .social-panel, .ranking-panel { top: 64px; bottom: calc(76px + env(safe-area-inset-bottom)); width: calc(100vw - 20px); min-height: 0; }
+  .pc-panel, .social-panel, .ranking-panel { top: 104px; bottom: calc(76px + env(safe-area-inset-bottom)); width: calc(100vw - 20px); min-height: 0; }
   .pc-panel-browser { bottom: calc(76px + env(safe-area-inset-bottom)); }
   .pc-panel-browser .browser-view { flex: 1; aspect-ratio: auto; }
   .community-music { flex-basis: 190px; }
-  .music-player { top: 62px; right: 10px; }
+  .header-audio { flex: 1; justify-content: flex-end; }
+  .voice-controls { position: absolute; top: 61px; right: 12px; z-index: 7; }
   .toast { top: 64px; right: 10px; max-width: calc(100vw - 20px); }
   .mobile-movement { position: absolute; z-index: 4; left: 0; right: 0; bottom: calc(84px + env(safe-area-inset-bottom)); display: block; height: 128px; pointer-events: none; }
   .mobile-movement button { position: absolute; bottom: 0; display: grid; place-items: center; border: 1px solid #c3b4e477; color: #f7f3ff; background: #211f39c9; box-shadow: 0 8px 28px #0807148f; backdrop-filter: blur(8px); pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -981,7 +1007,7 @@
   .mobile-joystick-thumb { position: absolute; width: 58px; height: 58px; border: 2px solid #d4fff2; border-radius: 50%; background: #8adcc5c9; box-shadow: 0 4px 15px #142c31aa; }
   .mobile-run { right: 18px; width: 72px; height: 72px; border-radius: 50%; font-size: 11px; font-weight: 800; letter-spacing: .05em; }
   .mobile-run:active { background: #7059b9; }
-  .interaction { left: auto; right: 18px; bottom: calc(168px + env(safe-area-inset-bottom)); transform: none; max-width: min(190px, 48vw); padding: 10px; }
+  .interaction { z-index: 6; left: auto; right: 18px; bottom: calc(168px + env(safe-area-inset-bottom)); transform: none; max-width: min(190px, 48vw); min-height: 48px; padding: 10px; touch-action: manipulation; }
   .interaction kbd { display: none; }
   .interaction span { font-size: 11px; }
   .begging-actions { right: 12px; bottom: calc(170px + env(safe-area-inset-bottom)); }
@@ -995,6 +1021,7 @@
   .topbar-right { display: none; }
   .brand { gap: 8px; }
   .community-music { flex: 1 1 auto; gap: 6px; padding: 6px; }
+  .header-audio .community-music { flex: 0 1 190px; }
   .music-volume input { width: 54px; }
   .music-volume output { display: none; }
   .mobile-menu-toggle { margin-left: 0; }

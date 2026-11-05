@@ -2,10 +2,12 @@
 
 import { Client, type Room } from '@colyseus/sdk';
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import NetverseScene, { type RemotePlayer } from './NetverseScene';
 import PcDesktop from './PcDesktop';
 import CommunityMusic from './CommunityMusic';
+import VoiceChat from './VoiceChat';
 import { api, readImage, type ArtImage, type Player } from '@/lib/api';
 import { loadChatMessages, saveChatMessage, type LocalChatMessage } from '@/lib/local-chat';
 import { compressChatImage } from '@/lib/chat-image';
@@ -15,6 +17,7 @@ import { entranceZ } from '@/lib/stations';
 import { nearestStation, spawn, stations, type Point3 } from '@/lib/stations';
 
 type ChatMessage = LocalChatMessage;
+const CharacterPreview = dynamic(() => import('./CharacterPreview'), { ssr: false, loading: () => <div className="character-preview" aria-label="Đang tải nhân vật" /> });
 type Snapshot = { players: RemotePlayer[]; seats: Record<number, string> };
 type Leaderboard = {
   rich: { nickname: string; balance_seconds: number }[];
@@ -179,6 +182,7 @@ export default function NetverseWorldApp() {
           catch { setReadAt({}); }
           position.current = found.balance_seconds > 0 ? [found.x, 0, found.z] : [0, 0, entranceZ + 3];
           setSceneStart([...position.current]);
+          setSceneKey((current) => current + 1);
           setEntered(true);
           loadChatMessages(found.id)
             .then(setMessages)
@@ -651,7 +655,7 @@ export default function NetverseWorldApp() {
             <small>INTERNET CAFÉ / 3D WORLD</small>
           </span>
         </div>
-        {entered && player && <CommunityMusic />}
+        {entered && player && <div className="header-audio"><CommunityMusic /><VoiceChat active={connection === 'online'} /></div>}
         <div className="topbar-right">
           <span className="room-tag">
             {stations.length} MÁY <i /> {players.length} ONLINE
@@ -742,7 +746,7 @@ export default function NetverseWorldApp() {
           </aside>
           {mainTab === 'world' && !seatedAt && <MobileMovementControls heldKeys={keys} />}
           {nearbyId && !seatedAt && seconds > 0 && mainTab === 'world' && (
-            <button className="interaction" onClick={() => sit(nearbyId)}>
+            <button type="button" className="interaction" onClick={() => sit(nearbyId)} aria-label={`Ngồi vào máy số ${nearbyId}`}>
               <kbd>E</kbd>
               <span>
                 Ngồi vào <b>máy #{String(nearbyId).padStart(3, '0')}</b>
@@ -816,7 +820,7 @@ export default function NetverseWorldApp() {
                   </h3>
                   <div className="chat-messages">
                     {visibleMessages.map((message) => (
-                      <article key={message.id}>
+                      <article key={message.id} className={message.fromUserId === player.id ? 'chat-own' : 'chat-other'}>
                         <b>{message.avatarUrl ? <Image unoptimized src={message.avatarUrl} alt="" width={25} height={25} /> : <span className="chat-avatar">{message.name[0]}</span>}{' '}{message.name}</b>
                         <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</time>
                         <span>{message.text}</span>
@@ -942,6 +946,7 @@ export default function NetverseWorldApp() {
                 </label>
                 <fieldset className="character-picker">
                   <legend>Nhân vật đã tải · chọn để đổi</legend>
+                  <CharacterPreview characterId={profileCharacter} />
                   <div>{characters.map((item) => <button key={item.id} type="button" className={profileCharacter === item.id ? 'selected' : ''} onClick={() => setProfileCharacter(item.id)} aria-pressed={profileCharacter === item.id}>{item.name}</button>)}</div>
                 </fieldset>
                 <div>

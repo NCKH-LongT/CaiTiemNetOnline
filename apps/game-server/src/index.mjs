@@ -377,7 +377,7 @@ export class CafeRoom extends Room {
 
   playerPresence(player) {
     return { sessionId: player.id, seatedAt: player.seatedAt, seatedSince: player.seatedSince,
-      onlineSeconds: player.onlineSeconds, lastOnlineAt: player.lastOnlineAt };
+      onlineSeconds: player.onlineSeconds, lastOnlineAt: player.lastOnlineAt, x: player.x, z: player.z };
   }
 
   snapshot() {

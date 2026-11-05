@@ -1,0 +1,8 @@
+{
+  "name": "@netverse/voice-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "node --watch src/index.mjs", "start": "node src/index.mjs" },
+  "dependencies": { "redis": "^5.0.0", "ws": "^8.18.0" }
+}

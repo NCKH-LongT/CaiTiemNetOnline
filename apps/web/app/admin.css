@@ -5,7 +5,7 @@
   background: #151422;
   color: #f1ecff;
   padding: 25px 30px 60px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
 }
 .admin-shell header {
   display: flex;
@@ -19,14 +19,14 @@
 }
 .admin-shell h1 {
   font:
-    600 29px 'Space Grotesk',
+    600 29px 'Be Vietnam Pro',
     sans-serif;
   margin: 0;
   flex: 1;
 }
 .admin-shell h2 {
   font:
-    600 19px 'Space Grotesk',
+    600 19px 'Be Vietnam Pro',
     sans-serif;
   margin: 0 0 12px;
 }
@@ -107,7 +107,7 @@
   background-size: cover;
   background-position: center;
   color: #fff;
-  font: 700 18px 'Space Grotesk', sans-serif;
+  font: 700 18px 'Be Vietnam Pro', sans-serif;
   text-shadow: 0 2px 9px #111, 0 0 16px #111;
 }
 .admin-card form {

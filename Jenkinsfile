@@ -93,6 +93,7 @@ pipeline {
               if docker compose --env-file "$DEPLOY_ENV" exec -T gateway wget -q -O /dev/null http://127.0.0.1/health && \
                  docker compose --env-file "$DEPLOY_ENV" exec -T gateway wget -q -O /dev/null http://127.0.0.1/api/ready && \
                  docker compose --env-file "$DEPLOY_ENV" exec -T gateway wget -q -O /dev/null http://127.0.0.1/socket/ready && \
+                 docker compose --env-file "$DEPLOY_ENV" exec -T gateway wget -q -O /dev/null http://127.0.0.1/voice/ready && \
                  docker compose --env-file "$DEPLOY_ENV" exec -T gateway wget -q -O /dev/null http://127.0.0.1/; then
                 break
               fi

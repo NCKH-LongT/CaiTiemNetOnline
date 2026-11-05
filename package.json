@@ -6,6 +6,7 @@
     "dev": "npm run dev -w @netverse/web",
     "dev:api": "npm run dev -w @netverse/api",
     "dev:game": "npm run dev -w @netverse/game-server",
+    "dev:voice": "npm run dev -w @netverse/voice-server",
     "lint": "npm run lint -w @netverse/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "node --test tests/*.test.mjs",

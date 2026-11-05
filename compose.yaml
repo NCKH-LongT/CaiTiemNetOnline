@@ -12,6 +12,7 @@ services:
       web: { condition: service_healthy }
       api: { condition: service_healthy }
       game: { condition: service_healthy }
+      voice: { condition: service_healthy }
     networks: [edge]
 
   web:
@@ -54,6 +55,8 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      VOICE_TURN_URL: ${VOICE_TURN_URL:-}
+      VOICE_TURN_SECRET: ${VOICE_TURN_SECRET:-}
     volumes:
       - media_data:/app/data
     expose: ["4000"]
@@ -84,6 +87,27 @@ services:
       api: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:2567/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [edge, data]
+
+  voice:
+    image: netverse-voice:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/voice-server/Dockerfile
+      labels: { org.netverse.project: netverse-3d }
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "2570"
+      REDIS_URL: redis://redis:6379
+    expose: ["2570"]
+    depends_on:
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:2570/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 10

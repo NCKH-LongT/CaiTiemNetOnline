@@ -13,19 +13,13 @@ const safeEqual = (left, right) => {
   return timingSafeEqual(a, b);
 };
 
-function youtubeUrl(value) {
+function audioUrl(value) {
   let url;
-  try { url = new URL(String(value || '').trim()); } catch { throw fail('invalid_youtube_url'); }
-  if (url.protocol !== 'https:') throw fail('invalid_youtube_url');
-  const host = url.hostname.toLowerCase();
-  let id = '';
-  if (host === 'youtu.be') id = url.pathname.slice(1);
-  else if (['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(host)) {
-    if (url.pathname === '/watch') id = url.searchParams.get('v') || '';
-    else if (/^\/(shorts|live|embed)\//.test(url.pathname)) id = url.pathname.split('/')[2] || '';
-  }
-  if (!/^[A-Za-z0-9_-]{11}$/.test(id)) throw fail('invalid_youtube_url');
-  return `https://www.youtube.com/watch?v=${id}`;
+  try { url = new URL(String(value || '').trim()); } catch { throw fail('invalid_audio_url'); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.href.length > 2048 ||
+    /(^|\.)(youtube\.com|youtu\.be|spotify\.com|soundcloud\.com)$/.test(url.hostname.toLowerCase()))
+    throw fail('invalid_audio_url');
+  return url.href;
 }
 
 async function verifyTurnstile(token) {
@@ -209,7 +203,7 @@ export async function adminRoutes(pool, redis, request, response, route) {
       await mkdir(dataDir, { recursive: true });
       await writeFile(path.join(dataDir, filename), buffer, { flag: 'wx' });
       fileUrl = `/api/media/${filename}`;
-    } else fileUrl = youtubeUrl(data.youtubeUrl);
+    } else fileUrl = audioUrl(data.audioUrl);
     const id = randomUUID();
     let result;
     try { result = await pool.query('INSERT INTO music_tracks (id,title,file_url) VALUES ($1,$2,$3) RETURNING *', [id, title, fileUrl]); }
