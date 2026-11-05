@@ -39,7 +39,7 @@ type Config = { sitekey: string | null; configured: boolean; gemini: boolean };
 type Board = { background_url: string | null; background_color: string };
 type MusicTrack = { id: string; title: string; file_url: string; created_at: string };
 type AdminPlayer = { id: string; username: string; nickname: string; fullname: string; avatar_url: string | null; balance_seconds: number; online_seconds: number; donated_seconds: number; pc_count: number; art_count: number; created_at: string; live: { sessionId: string; seatedAt: number | null; onlineSeconds: number; seatedSeconds: number } | null };
-type AdminPc = { stationId: number; wallpaper_url?: string | null; browser_url?: string | null; userId: string | null; nickname: string | null; desktop: { tab: string; updatedAt: number } | null };
+type AdminPc = { stationId: number; wallpaper_url?: string | null; browser_url?: string | null; userId: string | null; nickname: string | null; desktop: { tab: string; browserUrl?: string | null; updatedAt: number } | null };
 type AdminArt = { id: string; title: string; image_url: string; nickname: string };
 type TurnstileApi = {
   render: (
@@ -159,16 +159,30 @@ export default function AdminConsole() {
   }, [boardPreview]);
 
   useEffect(() => {
-    api<Config>('/api/admin/config')
-      .then(setConfig)
-      .catch(() => setNotice('API chưa sẵn sàng.'));
+    let active = true;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    const loadConfig = () => api<Config>('/api/admin/config')
+      .then((result) => {
+        if (!active) return;
+        setConfig(result);
+        setNotice((current) => current === 'Không tải được cấu hình admin. Đang thử lại...' ? '' : current);
+      })
+      .catch(() => {
+        if (!active) return;
+        setNotice('Không tải được cấu hình admin. Đang thử lại...');
+        retry = setTimeout(loadConfig, 5000);
+      });
+    void loadConfig();
     api<{ admin: boolean }>('/api/admin/me')
       .then((result) => setAdmin(result.admin))
       .catch(() => {});
+    return () => { active = false; if (retry) clearTimeout(retry); };
   }, []);
   useEffect(() => {
     if (!admin) return;
-    Promise.all([
+    let active = true;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    const loadAdminData = () => Promise.all([
       api<{ assets: Asset[] }>('/api/admin/assets'),
       api<{ objects: Object3D[] }>('/api/admin/world'),
       api<{ levels: Level[] }>('/api/admin/levels'),
@@ -177,14 +191,27 @@ export default function AdminConsole() {
       api<{ track: { id: string } | null }>('/api/music/current'),
     ])
       .then(([assetResult, worldResult, levelResult, boardResult, musicResult, playingResult]) => {
+        if (!active) return;
         setAssets(assetResult.assets);
         setObjects(worldResult.objects);
         setLevels(levelResult.levels);
         setBoard(boardResult.board);
         setMusicTracks(musicResult.tracks);
         setPlayingTrack(playingResult.track?.id || null);
+        setNotice((current) => current.startsWith('Không tải được dữ liệu quản trị:') ? '' : current);
       })
-      .catch((error) => setNotice(error.message));
+      .catch((error) => {
+        if (!active) return;
+        if ((error as Error).message === 'admin_required') {
+          setAdmin(false);
+          setNotice('Phiên quản trị đã hết hạn. Hãy đăng nhập lại.');
+          return;
+        }
+        setNotice(`Không tải được dữ liệu quản trị: ${(error as Error).message}`);
+        retry = setTimeout(loadAdminData, 5000);
+      });
+    void loadAdminData();
+    return () => { active = false; if (retry) clearTimeout(retry); };
   }, [admin]);
   useEffect(() => {
     if (!admin || !selectedPcId) return;
@@ -199,8 +226,12 @@ export default function AdminConsole() {
   useEffect(() => {
     if (!admin) return;
     const refresh = () => api<{ players: AdminPlayer[]; pcs: AdminPc[] }>('/api/admin/overview')
-      .then((result) => { setAdminPlayers(result.players); setAdminPcs(result.pcs); })
-      .catch((error) => setNotice(error.message));
+      .then((result) => {
+        setAdminPlayers(result.players);
+        setAdminPcs(result.pcs);
+        setNotice((current) => current.startsWith('Không tải được trạng thái phòng máy:') ? '' : current);
+      })
+      .catch((error) => setNotice(`Không tải được trạng thái phòng máy: ${(error as Error).message}`));
     refresh();
     const timer = setInterval(refresh, 5000);
     return () => clearInterval(timer);
@@ -518,7 +549,9 @@ export default function AdminConsole() {
               <p>Ứng dụng hiện tại: <b>{({ desktop: 'Desktop', browser: 'Trình duyệt', album: 'Album', top: 'Top tranh', drawing: 'Đang vẽ' } as Record<string, string>)[selectedPc.desktop?.tab || 'desktop']}</b></p>
               <div className="admin-desktop-screen" style={selectedPc.wallpaper_url ? { backgroundImage: `url(${selectedPc.wallpaper_url})` } : undefined}>
                 <strong>NETVERSE OS</strong>
-                {selectedPc.desktop?.tab === 'browser' && selectedPc.browser_url && <iframe title={`Trình duyệt PC ${selectedPc.stationId}`} src={selectedPc.browser_url} sandbox="allow-forms allow-scripts allow-same-origin allow-popups" referrerPolicy="strict-origin-when-cross-origin" />}
+                {selectedPc.desktop?.tab === 'browser' && (selectedPc.desktop.browserUrl
+                  ? <iframe title={`Trình duyệt PC ${selectedPc.stationId}`} src={selectedPc.desktop.browserUrl} sandbox="allow-forms allow-scripts allow-same-origin allow-popups" referrerPolicy="strict-origin-when-cross-origin" />
+                  : <span>Trình duyệt đang ở tab mới.</span>)}
                 {selectedPc.desktop?.tab === 'drawing' && (pcDetail.preview ? <Image unoptimized className="admin-drawing-preview" src={pcDetail.preview} alt="Nét vẽ đang thực hiện" width={480} height={270} /> : <span>Đang chờ nét vẽ...</span>)}
                 {['album', 'top'].includes(selectedPc.desktop?.tab || '') && <div className="admin-desktop-gallery">
                   {(selectedPc.desktop?.tab === 'top' ? pcDetail.top : pcDetail.images).map((image) => <figure key={image.id}>

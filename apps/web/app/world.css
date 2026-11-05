@@ -114,6 +114,16 @@
   min-height: 400px;
   background: #171624f7;
 }
+.pc-panel-browser {
+  bottom: auto;
+  width: min(1120px, calc(100vw - 40px), calc((100dvh - 250px) * 1.77778));
+  min-height: 0;
+}
+.pc-panel-browser .browser-view {
+  flex: none;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
 .pc-tabs {
   gap: 22px;
   overflow-x: auto;
@@ -959,6 +969,8 @@
   .main-tabs .nav-online-count { display: none; }
   .footer { display: none; }
   .pc-panel, .social-panel, .ranking-panel { top: 64px; bottom: calc(76px + env(safe-area-inset-bottom)); width: calc(100vw - 20px); min-height: 0; }
+  .pc-panel-browser { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .pc-panel-browser .browser-view { flex: 1; aspect-ratio: auto; }
   .community-music { flex-basis: 190px; }
   .music-player { top: 62px; right: 10px; }
   .toast { top: 64px; right: 10px; max-width: calc(100vw - 20px); }

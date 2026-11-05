@@ -247,7 +247,10 @@ export default function NetverseWorldApp() {
     let cancelled = false;
     let joined: Room | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
+    let healthTimer: ReturnType<typeof setInterval> | null = null;
+    let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
     let positionSynced = false;
+    let verifyConnection = () => {};
     (async () => {
       const { ticket } = await api<{ ticket: string }>('/api/auth/ticket');
       if (cancelled) return;
@@ -261,10 +264,14 @@ export default function NetverseWorldApp() {
         joined.leave();
         return;
       }
+      // A fresh ticket and room are needed after a long background suspension.
+      joined.reconnection.enabled = false;
       room.current = joined;
       setSessionId(joined.sessionId);
       setConnection('online');
       joined.onMessage('snapshot', (snapshot: Snapshot) => {
+        if (snapshotTimer) clearTimeout(snapshotTimer);
+        snapshotTimer = null;
         if (!positionSynced) {
           const self = snapshot.players.find((item) => item.id === joined?.sessionId);
           if (self) {
@@ -329,7 +336,25 @@ export default function NetverseWorldApp() {
           return next;
         }));
       });
-      joined.send('sync');
+      verifyConnection = () => {
+        if (cancelled || document.visibilityState !== 'visible' || !navigator.onLine || room.current !== joined) return;
+        if (!joined!.connection.isOpen) {
+          setConnectionAttempt((current) => current + 1);
+          return;
+        }
+        if (snapshotTimer) clearTimeout(snapshotTimer);
+        joined!.send('sync');
+        snapshotTimer = setTimeout(() => {
+          setConnection('connecting');
+          setConnectionAttempt((current) => current + 1);
+        }, 10000);
+      };
+      joined.onDrop(() => setConnection('connecting'));
+      document.addEventListener('visibilitychange', verifyConnection);
+      window.addEventListener('online', verifyConnection);
+      window.addEventListener('pageshow', verifyConnection);
+      healthTimer = setInterval(verifyConnection, 20000);
+      verifyConnection();
       joined.onLeave((code) => {
         if (cancelled) return;
         room.current = null;
@@ -338,7 +363,7 @@ export default function NetverseWorldApp() {
         setSeatedAt(null);
         setSeats({});
         setPlayers([]);
-        if (code === 4001) {
+        if (code === 4409) {
           setNotice('Tài khoản đã mở quán ở tab khác. Làm mới trang này để tiếp tục tại đây.');
           return;
         }
@@ -354,6 +379,11 @@ export default function NetverseWorldApp() {
     return () => {
       cancelled = true;
       if (retry) clearTimeout(retry);
+      if (healthTimer) clearInterval(healthTimer);
+      if (snapshotTimer) clearTimeout(snapshotTimer);
+      document.removeEventListener('visibilitychange', verifyConnection);
+      window.removeEventListener('online', verifyConnection);
+      window.removeEventListener('pageshow', verifyConnection);
       joined?.leave();
       room.current = null;
     };
@@ -361,7 +391,9 @@ export default function NetverseWorldApp() {
 
   const sit = useCallback(
     (stationId: number) => {
-      if (!room.current) {
+      if (!room.current?.connection.isOpen) {
+        setConnection('connecting');
+        setConnectionAttempt((current) => current + 1);
         setNotice('Đang kết nối lại game server. Hãy thử lại sau vài giây.');
         return;
       }
@@ -385,8 +417,8 @@ export default function NetverseWorldApp() {
   const stand = useCallback(() => {
     room.current?.send('stand');
   }, []);
-  const reportDesktopView = useCallback((tab: 'desktop' | 'browser' | 'album' | 'top' | 'drawing', preview?: string) => {
-    room.current?.send('desktop-view', { tab, preview });
+  const reportDesktopView = useCallback((tab: 'desktop' | 'browser' | 'album' | 'top' | 'drawing', preview?: string, browserUrl?: string | null) => {
+    room.current?.send('desktop-view', { tab, preview, browserUrl });
   }, []);
   useEffect(() => {
     if (!entered) return;

@@ -31,7 +31,7 @@ type Props = {
   viewerId: string;
   onlinePlayers: { userId?: string }[];
   onAlbumChange: () => void;
-  onViewChange: (tab: 'desktop' | 'browser' | 'album' | 'top' | 'drawing', preview?: string) => void;
+  onViewChange: (tab: 'desktop' | 'browser' | 'album' | 'top' | 'drawing', preview?: string, browserUrl?: string | null) => void;
   onPrivateChat: (userId: string) => void;
   onStand: () => void;
 };
@@ -44,6 +44,7 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
   const [url, setUrl] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [browser, setBrowser] = useState<{ history: BrowserEntry[]; index: number }>({ history: [browserHome], index: 0 });
+  const activeBrowserUrl = browser.history[browser.index]?.content || null;
   const [reloadKey, setReloadKey] = useState(0);
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [shortcutTitle, setShortcutTitle] = useState('');
@@ -69,12 +70,12 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
         const data = thumbnail.toDataURL('image/webp', 0.5);
         if (data.length < 170_000) preview = data;
       }
-      onViewChange(view, preview);
+      onViewChange(view, preview, view === 'browser' ? activeBrowserUrl : undefined);
     };
     report();
     const timer = setInterval(report, drawing ? 2000 : 10000);
     return () => clearInterval(timer);
-  }, [tab, drawing, onViewChange]);
+  }, [tab, drawing, activeBrowserUrl, onViewChange]);
 
   const refresh = async () => {
     const result = await api<{ state: State; images: ArtImage[] }>(`/api/pc/${stationId}`);
@@ -299,7 +300,7 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
   const browserTitle = currentPortal || (embeddedHost === 'www.youtube-nocookie.com' ? 'YouTube' : embeddedHost?.endsWith('tiktok.com') ? 'TikTok' : embeddedHost || 'Tab mới');
 
   return (
-    <section className="pc-panel" aria-label={`Máy tính số ${stationId}`}>
+    <section className={`pc-panel${tab === 'browser' ? ' pc-panel-browser' : ''}`} aria-label={`Máy tính số ${stationId}`}>
       <div className="pc-header">
         <div>
           <span className="pc-icon">⌘</span>

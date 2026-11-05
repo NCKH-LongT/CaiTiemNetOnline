@@ -49,7 +49,20 @@ export async function api<T>(path: string, value?: unknown): Promise<T> {
           body: JSON.stringify(value),
         },
   );
-  const result = await response.json();
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(response.ok
+      ? 'API trả về dữ liệu không hợp lệ. Vui lòng thử lại.'
+      : `API tạm thời không phản hồi (HTTP ${response.status}). Vui lòng thử lại.`);
+  }
+  let result: { error?: string };
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error('API trả về dữ liệu không hợp lệ. Vui lòng thử lại.');
+  }
+  if (!result || typeof result !== 'object')
+    throw new Error('API trả về dữ liệu không hợp lệ. Vui lòng thử lại.');
   if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
   return result as T;
 }

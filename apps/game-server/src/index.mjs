@@ -287,7 +287,9 @@ export class CafeRoom extends Room {
       const player = this.players.get(client.sessionId);
       if (!redis || !player?.seatedAt) return;
       const tab = ['desktop', 'browser', 'album', 'top', 'drawing'].includes(data?.tab) ? data.tab : 'desktop';
-      redis.set(`netverse:desktop:${player.seatedAt}`, JSON.stringify({ tab, updatedAt: Date.now() }), { EX: 20 }).catch(() => {});
+      const browserUrl = tab === 'browser' && typeof data?.browserUrl === 'string' &&
+        data.browserUrl.length <= 2000 && /^https:\/\//.test(data.browserUrl) ? data.browserUrl : null;
+      redis.set(`netverse:desktop:${player.seatedAt}`, JSON.stringify({ tab, browserUrl, updatedAt: Date.now() }), { EX: 20 }).catch(() => {});
       if (tab === 'drawing' && typeof data?.preview === 'string' &&
         /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(data.preview) && data.preview.length < 170_000)
         redis.set(`netverse:desktop-preview:${player.seatedAt}`, data.preview, { EX: 20 }).catch(() => {});
@@ -322,7 +324,7 @@ export class CafeRoom extends Room {
 
   onJoin(client, options, auth) {
     const duplicate = this.clients.find((peer) => peer.sessionId !== client.sessionId && this.players.get(peer.sessionId)?.userId === auth?.id);
-    duplicate?.leave(4001, 'session_replaced');
+    duplicate?.leave(4409, 'session_replaced');
     const name =
       auth?.nickname || (typeof options?.name === 'string' ? options.name.trim().slice(0, 24) : '');
     this.players.set(client.sessionId, {
@@ -353,6 +355,9 @@ export class CafeRoom extends Room {
     const player = this.players.get(client.sessionId);
     if (player?.seatedAt) await this.charge(player);
     if (player) await this.trackOnline(player);
+    if (player?.userId && pool)
+      await pool.query('UPDATE players SET x=$1,z=$2 WHERE id=$3', [player.x, player.z, player.userId])
+        .catch((error) => console.error('Save position:', error));
     if (player?.seatedAt && redis) await redis.del(`netverse:seat:${player.seatedAt}`);
     if (player?.seatedAt && redis) await redis.del(`netverse:desktop:${player.seatedAt}`);
     if (player?.seatedAt && redis) await redis.del(`netverse:desktop-preview:${player.seatedAt}`);
