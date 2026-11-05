@@ -1,6 +1,6 @@
 import { readFile, mkdir, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID, createHmac } from 'node:crypto';
+import { randomUUID, createHmac, createHash } from 'node:crypto';
 import characters from '../../../shared/characters.json' with { type: 'json' };
 import world from '../../../shared/world.json' with { type: 'json' };
 import {
@@ -221,6 +221,39 @@ export async function playerRoutes(pool, redis, request, response, route) {
     return json(response, 200, { ticket, iceServers });
   }
   const player = await session(pool, request);
+  if (route === '/api/youtube/search' && method === 'GET') {
+    if (!player) throw error('login_required', 401);
+    if (!process.env.YOUTUBE_API_KEY) throw error('youtube_search_not_configured', 503);
+    const query = new URL(request.url, 'http://localhost').searchParams.get('q')?.trim() || '';
+    if (query.length < 2 || query.length > 100) throw error('invalid_search_query');
+    const cacheKey = `netverse:youtube-search:${createHash('sha256').update(query.toLocaleLowerCase()).digest('hex')}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) return json(response, 200, JSON.parse(cached));
+    const rateKey = `netverse:youtube-search-rate:${player.id}`;
+    const count = await redis.incr(rateKey);
+    if (count === 1) await redis.expire(rateKey, 60);
+    if (count > 20) throw error('search_rate_limited', 429);
+    const url = new URL('https://www.googleapis.com/youtube/v3/search');
+    url.search = new URLSearchParams({
+      part: 'snippet', type: 'video', videoEmbeddable: 'true', maxResults: '12',
+      safeSearch: 'moderate', regionCode: 'VN', relevanceLanguage: 'vi', q: query,
+      key: process.env.YOUTUBE_API_KEY,
+    }).toString();
+    const result = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!result.ok) throw error('youtube_search_unavailable', 502);
+    const data = await result.json();
+    const videos = (data.items || [])
+      .filter((item) => /^[A-Za-z0-9_-]{11}$/.test(item?.id?.videoId || ''))
+      .map((item) => ({
+        id: item.id.videoId,
+        title: String(item.snippet?.title || '').slice(0, 160),
+        channel: String(item.snippet?.channelTitle || '').slice(0, 80),
+        thumbnail: `https://i.ytimg.com/vi/${item.id.videoId}/mqdefault.jpg`,
+      }));
+    const payload = { videos };
+    await redis.set(cacheKey, JSON.stringify(payload), { EX: 3600 });
+    return json(response, 200, payload);
+  }
   if (route === '/api/player/artist' && method === 'GET') {
     if (!player) throw error('login_required', 401);
     const [uploads, likes] = await Promise.all([

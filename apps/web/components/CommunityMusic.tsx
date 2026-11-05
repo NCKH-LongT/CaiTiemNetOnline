@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 
-type Track = { id: string; title: string; file_url: string; started_at: string };
-const isLegacyVideo = (url: string) => /^https:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(url);
+type Track = { id: string; title: string; file_url: string | null; started_at: string };
+const isLegacyVideo = (url: string) => /^https:\/\/(?:www\.)?(?:youtube\.com|youtu\.be|open\.spotify\.com|soundcloud\.com)\//i.test(url);
 
 export default function CommunityMusic() {
   const [track, setTrack] = useState<Track | null>(null);
@@ -31,7 +31,7 @@ export default function CommunityMusic() {
     return () => clearInterval(timer);
   }, []);
 
-  const playable = Boolean(track && !isLegacyVideo(track.file_url));
+  const playable = Boolean(track?.file_url && !isLegacyVideo(track.file_url));
   useEffect(() => {
     if (audio.current) {
       audio.current.volume = volume / 100;
@@ -62,9 +62,9 @@ export default function CommunityMusic() {
     else audio.current?.play().then(() => { setNeedsGesture(false); setPlayError(false); }).catch(() => setNeedsGesture(true));
   };
   const unavailable = Boolean(track && !playable);
-  const title = unavailable ? 'Bài YouTube cũ không thể phát ẩn. Admin hãy chọn URL âm thanh trực tiếp.' : playError ? 'Nguồn âm thanh không phát được. Admin hãy kiểm tra URL.' : track?.title || 'Chưa có nhạc chung';
+  const title = unavailable ? 'Nguồn đang chọn không phát được. Admin hãy chọn URL âm thanh trực tiếp.' : playError ? 'Nguồn âm thanh không phát được. Admin hãy kiểm tra URL.' : track?.title || 'Chưa có nhạc chung';
   return <div className="community-music" aria-label="Nhạc cộng đồng" title={title}>
-    <audio ref={audio} src={playable ? track?.file_url : undefined} loop preload="metadata" onError={() => { setPlayError(true); setNeedsGesture(false); }} />
+    <audio ref={audio} src={playable ? track?.file_url || undefined : undefined} loop preload="metadata" onError={() => { setPlayError(true); setNeedsGesture(false); }} />
     <label className="music-toggle"><input type="checkbox" checked={enabled} onChange={(event) => toggle(event.target.checked)} /><span>Nhạc</span></label>
     <label className="music-volume"><input type="range" min="0" max="100" value={volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); localStorage.setItem('netverse-music-volume', String(next)); }} aria-label="Âm lượng nhạc chung" /><output>{volume}%</output></label>
     {(unavailable || playError) && <button type="button" className="music-warning" onClick={() => setShowWarning((current) => !current)} aria-label={title} aria-expanded={showWarning}>⚠</button>}

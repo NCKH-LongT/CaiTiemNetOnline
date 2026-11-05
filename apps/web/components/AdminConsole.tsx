@@ -37,7 +37,15 @@ type Proposal = {
 };
 type Config = { sitekey: string | null; configured: boolean; gemini: boolean };
 type Board = { background_url: string | null; background_color: string };
-type MusicTrack = { id: string; title: string; file_url: string; created_at: string };
+type MusicTrack = { id: string; title: string; file_url: string | null; youtube_url: string | null; spotify_url: string | null; created_at: string };
+type AdminSection = 'players' | 'pcs' | 'music' | 'media' | 'world' | 'settings';
+const musicErrorMessage = (code: string) => ({
+  invalid_audio_url: 'URL âm thanh phải là HTTPS dẫn trực tiếp tới file hoặc luồng phát; link YouTube/Spotify không phát ẩn được.',
+  invalid_youtube_url: 'Link YouTube phải dẫn tới một video trên youtube.com hoặc youtu.be.',
+  invalid_spotify_url: 'Link Spotify phải dẫn tới bài hát, album hoặc playlist trên open.spotify.com.',
+  music_source_required: 'Hãy thêm ít nhất một URL âm thanh, file MP3, link YouTube hoặc link Spotify.',
+  music_audio_required: 'Bài này chỉ có link tham khảo. Hãy thêm bài có URL âm thanh trực tiếp để phát nhạc chung.',
+} as Record<string, string>)[code] || code;
 type ManagedImage = { filename: string; url: string; bytes: number; createdAt: string; usage: string[]; backedAt: string | null };
 type MediaInventory = { images: ManagedImage[]; totalBytes: number; orphanCount: number; pendingCount: number; drive: { folderId: string; configured: boolean; running: boolean; lastRunAt: string | null; lastError: string | null } };
 type AdminPlayer = { id: string; username: string; nickname: string; fullname: string; avatar_url: string | null; balance_seconds: number; online_seconds: number; donated_seconds: number; pc_count: number; art_count: number; created_at: string; live: { sessionId: string; seatedAt: number | null; onlineSeconds: number; seatedSeconds: number } | null };
@@ -124,10 +132,13 @@ export default function AdminConsole() {
   const [password, setPassword] = useState('');
   const [captcha, setCaptcha] = useState('');
   const [notice, setNotice] = useState('');
+  const [adminSection, setAdminSection] = useState<AdminSection>('players');
   const [musicTracks, setMusicTracks] = useState<MusicTrack[]>([]);
   const [playingTrack, setPlayingTrack] = useState<string | null>(null);
   const [musicTitle, setMusicTitle] = useState('');
   const [musicUrl, setMusicUrl] = useState('');
+  const [musicYoutubeUrl, setMusicYoutubeUrl] = useState('');
+  const [musicSpotifyUrl, setMusicSpotifyUrl] = useState('');
   const [musicFile, setMusicFile] = useState<File | null>(null);
   const [media, setMedia] = useState<MediaInventory | null>(null);
   const [driveFolder, setDriveFolder] = useState('');
@@ -308,17 +319,17 @@ export default function AdminConsole() {
           reader.readAsDataURL(musicFile);
         });
       }
-      const result = await api<{ track: MusicTrack }>('/api/admin/music', { title: musicTitle, audioUrl: musicUrl || undefined, audio });
+      const result = await api<{ track: MusicTrack }>('/api/admin/music', { title: musicTitle, audioUrl: musicUrl || undefined, youtubeUrl: musicYoutubeUrl || undefined, spotifyUrl: musicSpotifyUrl || undefined, audio });
       setMusicTracks((current) => [result.track, ...current]);
-      setPlayingTrack(result.track.id);
       setMusicTitle('');
       setMusicUrl('');
+      setMusicYoutubeUrl('');
+      setMusicSpotifyUrl('');
       setMusicFile(null);
       formElement.reset();
-      setNotice('Đã thêm và phát nhạc cho cộng đồng.');
+      setNotice('Đã lưu bài. Nhấn PHÁT trên bài có nguồn âm thanh để chọn nhạc chung.');
     } catch (error) {
-      const message = (error as Error).message;
-      setNotice(message === 'invalid_audio_url' ? 'Hãy dùng URL HTTPS dẫn trực tiếp tới âm thanh; link trang YouTube/Spotify không phát ẩn được.' : message);
+      setNotice(musicErrorMessage((error as Error).message));
     }
   };
   const playMusic = async (trackId: string | null) => {
@@ -326,7 +337,7 @@ export default function AdminConsole() {
       await api('/api/admin/music/play', { trackId });
       setPlayingTrack(trackId);
       setNotice(trackId ? 'Đang phát nhạc cho cộng đồng.' : 'Đã dừng nhạc chung.');
-    } catch (error) { setNotice((error as Error).message); }
+    } catch (error) { setNotice(musicErrorMessage((error as Error).message)); }
   };
   const deleteMusic = async (track: MusicTrack) => {
     try {
@@ -567,8 +578,12 @@ export default function AdminConsole() {
           <button disabled={!captcha}>Đăng nhập</button>
         </form>
       ) : (
+        <>
+        <nav className="admin-menu" aria-label="Chức năng quản trị">
+          {([['players', 'Người chơi'], ['pcs', 'Phòng máy'], ['music', 'Nhạc cộng đồng'], ['media', 'Ảnh và sao lưu'], ['world', 'Xây thế giới'], ['settings', 'Cài đặt']] as const).map(([section, label]) => <button key={section} type="button" aria-current={adminSection === section ? 'page' : undefined} onClick={() => setAdminSection(section)}>{label}</button>)}
+        </nav>
         <div className="admin-grid">
-          <section className="admin-card admin-media">
+          <section className="admin-card admin-media" hidden={adminSection !== 'media'}>
             <h2>Quản lý ảnh và dung lượng</h2>
             {media ? <>
               <p>{media.images.length} ảnh · {(media.totalBytes / 1024 / 1024).toFixed(2)} MB · {media.orphanCount} ảnh không còn sử dụng · {media.pendingCount} ảnh chưa sao lưu vào thư mục hiện tại</p>
@@ -592,7 +607,7 @@ export default function AdminConsole() {
               </div>
             </> : <p>Đang tải danh sách ảnh...</p>}
           </section>
-          <section className="admin-card admin-overview">
+          <section className="admin-card admin-overview" hidden={adminSection !== 'players'}>
             <h2>Người chơi ({adminPlayers.length})</h2>
             <p>{adminPlayers.filter((item) => item.live).length} người online · nhấn người chơi đang sử dụng PC để xem desktop.</p>
             <div className="admin-player-filters">
@@ -611,7 +626,7 @@ export default function AdminConsole() {
               </button>)}
             </div>
           </section>
-          <section className="admin-card admin-overview">
+          <section className="admin-card admin-overview" hidden={adminSection !== 'pcs'}>
             <h2>Phòng máy ({adminPcs.filter((item) => item.userId).length}/{stations.length} hoạt động)</h2>
             <div className="pc-filters"><button className={pcFilter === 'all' ? 'selected' : ''} onClick={() => setPcFilter('all')}>TẤT CẢ</button><button className={pcFilter === 'active' ? 'selected' : ''} onClick={() => setPcFilter('active')}>ĐANG DÙNG</button></div>
             <div className="admin-pc-grid">
@@ -638,26 +653,28 @@ export default function AdminConsole() {
               <small>Trạng thái ứng dụng cập nhật từ PC đang online; hình nền và URL lấy từ dữ liệu đã lưu.</small>
             </div>}
           </section>
-          <section className="admin-card admin-music">
+          <section className="admin-card admin-music" hidden={adminSection !== 'music'}>
             <h2>Nhạc cộng đồng</h2>
-            <p>Tải MP3 hoặc dán URL âm thanh HTTPS trực tiếp (MP3, OGG, luồng radio tương thích trình duyệt). Link trang YouTube/Spotify không phát ẩn được.</p>
+            <p>Nhạc chung phát bằng URL âm thanh trực tiếp hoặc MP3. Link YouTube và Spotify được lưu để tham khảo; chúng không phải nguồn phát ẩn.</p>
             <form onSubmit={uploadMusic}>
               <input value={musicTitle} onChange={(event) => setMusicTitle(event.target.value)} placeholder="Tên bài nhạc" required maxLength={100} aria-label="Tên bài nhạc" />
-              <input type="url" value={musicUrl} onChange={(event) => setMusicUrl(event.target.value)} placeholder="https://example.com/music.mp3" required={!musicFile} aria-label="URL âm thanh trực tiếp" />
+              <input type="url" value={musicUrl} onChange={(event) => setMusicUrl(event.target.value)} placeholder="URL âm thanh trực tiếp (MP3, OGG, radio)" aria-label="URL âm thanh trực tiếp" required={!musicFile && !musicYoutubeUrl && !musicSpotifyUrl} />
               <input type="file" accept="audio/mpeg,.mp3" onChange={(event) => setMusicFile(event.target.files?.[0] || null)} aria-label="Tải MP3" />
+              <input type="url" value={musicYoutubeUrl} onChange={(event) => setMusicYoutubeUrl(event.target.value)} placeholder="Link YouTube tham khảo" aria-label="Link YouTube tham khảo" />
+              <input type="url" value={musicSpotifyUrl} onChange={(event) => setMusicSpotifyUrl(event.target.value)} placeholder="Link Spotify tham khảo" aria-label="Link Spotify tham khảo" />
               <button type="submit">THÊM NHẠC</button>
             </form>
             <div className="admin-music-list">
               {musicTracks.map((track) => <div key={track.id}>
-                <strong>{track.title}</strong>
-                <button onClick={() => playMusic(track.id)} disabled={playingTrack === track.id || /^https:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(track.file_url)}>{/^https:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(track.file_url) ? 'CẦN THAY LINK' : playingTrack === track.id ? 'ĐANG PHÁT' : 'PHÁT'}</button>
+                <span className="admin-music-info"><strong>{track.title}</strong><small title={track.file_url || undefined}>{track.file_url ? `Nguồn phát: ${track.file_url}` : 'Chỉ có link tham khảo'}</small>{track.youtube_url && <a href={track.youtube_url} target="_blank" rel="noopener noreferrer">YouTube ↗</a>}{track.spotify_url && <a href={track.spotify_url} target="_blank" rel="noopener noreferrer">Spotify ↗</a>}</span>
+                <button onClick={() => playMusic(track.id)} disabled={playingTrack === track.id || !track.file_url || /^https:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(track.file_url)}>{playingTrack === track.id ? 'ĐANG PHÁT' : 'PHÁT'}</button>
                 <button onClick={() => deleteMusic(track)}>XÓA</button>
               </div>)}
               {!musicTracks.length && <p>Chưa tải bài nhạc nào.</p>}
             </div>
             <button onClick={() => playMusic(null)} disabled={!playingTrack}>DỪNG NHẠC</button>
           </section>
-          <section className="admin-card">
+          <section className="admin-card" hidden={adminSection !== 'settings'}>
             <h2>Nền bảng vàng</h2>
             <p>Chọn màu và ảnh nền cho bảng vàng trong quán. Ảnh được nén trước khi tải lên.</p>
             <div className="board-preview" style={{ backgroundColor: board.background_color, backgroundImage: boardPreview ? `url(${boardPreview})` : board.background_url && !removeBoardImage ? `url(${board.background_url})` : undefined }}>
@@ -676,6 +693,7 @@ export default function AdminConsole() {
               <button>LƯU NỀN BẢNG VÀNG</button>
             </form>
           </section>
+          {adminSection === 'world' && <>
           <section className="admin-card">
             <h2>1. Tải asset lên</h2>
             <p>Chọn GLB hoặc GLTF tự chứa dữ liệu, kèm thông tin giấy phép sử dụng.</p>
@@ -900,7 +918,8 @@ export default function AdminConsole() {
               ))}
             </div>
           </section>
-          <section className="admin-card">
+          </>}
+          <section className="admin-card" hidden={adminSection !== 'settings'}>
             <h2>Cấp nghệ sĩ</h2>
             <p>
               Đề xuất mặc định: Tân binh 0/0, Tập sự 3/10, Nghệ sĩ 10/50, Danh họa 25/200, Huyền
@@ -953,6 +972,7 @@ export default function AdminConsole() {
             <button onClick={saveLevels}>LƯU CẤP BẬC</button>
           </section>
         </div>
+        </>
       )}
     </main>
   );

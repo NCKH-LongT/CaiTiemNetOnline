@@ -307,7 +307,7 @@
 .browser-home .shortcut-grid button { justify-content: flex-start; gap: 10px; min-height: 52px; padding: 10px; background: #ffffff14; }
 .browser-home .shortcut-grid button:hover, .browser-home .shortcut-item button:hover { border-color: #9debd2; background: #ffffff20; }
 .browser-home .shortcut-create { margin-top: 12px; }
-.browser-video-portal { align-self: center; width: min(540px, 100%); margin: auto; padding: 28px; text-align: center; }
+.browser-video-portal { align-self: center; width: min(600px, 100%); margin: auto; padding: 28px; text-align: center; }
 .browser-portal-mark { display: grid; place-items: center; width: 74px; height: 74px; margin: 0 auto 14px; border-radius: 21px; background: #ed3d3d; color: #fff; font-size: 38px; }
 .browser-portal-mark.tiktok { background: #111; text-shadow: -2px -2px #25f4ee, 2px 2px #fe2c55; }
 .browser-video-portal h2 { margin: 0; font-size: 24px; }
@@ -315,6 +315,15 @@
 .browser-video-portal form { display: flex; gap: 7px; }
 .browser-video-portal input { min-width: 0; }
 .browser-video-portal button { white-space: nowrap; }
+.browser-video-search { margin-bottom: 12px; }
+.browser-video-results { display: grid; gap: 8px; max-height: 280px; overflow-y: auto; margin: 12px 0; text-align: left; }
+.browser-video-results button { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; text-align: left; white-space: normal; background: #ffffff18; }
+.browser-video-results img { width: 100px; height: 57px; flex: 0 0 100px; object-fit: cover; border-radius: 5px; }
+.browser-video-results span { min-width: 0; }
+.browser-video-results strong, .browser-video-results small { display: block; overflow: hidden; text-overflow: ellipsis; }
+.browser-video-results strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 12px; }
+.browser-video-results small { margin-top: 4px; color: #b8b0c9; font-size: 10px; }
+.browser-video-error { color: #ffd1d1; }
 .browser-frame { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; padding: 8px; }
 .browser-frame iframe { min-height: 200px; border-radius: 4px; }
 .browser-frame small { padding-top: 5px; color: #b8b0c9; font-size: 10px; }

@@ -83,6 +83,14 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
+.admin-grid > [hidden] { display: none; }
+.admin-menu { display: flex; gap: 8px; overflow-x: auto; margin: 0 0 18px; padding-bottom: 4px; }
+.admin-menu button { flex: 0 0 auto; background: #29253f; color: #e9e0ff; border: 1px solid #7664a8; }
+.admin-menu button[aria-current='page'] { background: #a58be9; color: #191428; }
+@media (max-width: 600px) {
+  .admin-menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
+  .admin-menu button { white-space: normal; min-height: 39px; }
+}
 .admin-media { grid-column: 1 / -1; }
 .admin-drive-form { display: flex !important; flex-wrap: wrap; align-items: end; gap: 8px; margin: 12px 0; }
 .admin-drive-form label { flex: 0 0 100%; margin: 0; }
@@ -95,12 +103,16 @@
 .admin-image-row strong, .admin-image-row small { display: block; }
 @media (max-width: 600px) { .admin-image-row { flex-wrap: wrap; } .admin-image-row > small { margin-left: 64px; } }
 .admin-music form, .admin-music-list { display: grid; gap: 8px; }
-.admin-music form { grid-template-columns: minmax(120px, 1fr) minmax(160px, 1fr) auto; margin: 12px 0; }
-.admin-music form { grid-template-columns: minmax(120px, 1fr) minmax(160px, 1fr) minmax(110px, 1fr) auto; }
+.admin-music { grid-column: 1 / -1; }
+.admin-music form { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 0; }
 .admin-music input[type='file'] { max-width: 180px; font-size: 10px; }
 .admin-music-list { margin-bottom: 12px; max-height: 230px; overflow: auto; }
 .admin-music-list > div { display: flex; align-items: center; gap: 8px; padding: 7px; border: 1px solid #a08cce50; border-radius: 6px; }
 .admin-music-list strong { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.admin-music-info { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; flex-wrap: wrap; }
+.admin-music-info strong { flex: 0 0 100%; }
+.admin-music-info small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-music-info a { color: #b9a4f6; font-size: 11px; }
 @media (max-width: 700px) { .admin-music form { grid-template-columns: 1fr; } }
 .admin-card {
   padding: 20px;

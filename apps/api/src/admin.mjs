@@ -23,6 +23,19 @@ function audioUrl(value) {
   return url.href;
 }
 
+function referenceUrl(value, provider) {
+  if (!value) return null;
+  let url;
+  try { url = new URL(String(value).trim()); } catch { throw fail(`invalid_${provider}_url`); }
+  const host = url.hostname.toLowerCase();
+  const valid = provider === 'youtube'
+    ? ((host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com') && /^(\/watch|\/shorts\/|\/live\/)/.test(url.pathname)) || (host === 'youtu.be' && url.pathname.length > 1)
+    : host === 'open.spotify.com' && /^\/(track|album|playlist)\/[A-Za-z0-9]+/.test(url.pathname);
+  if (url.protocol !== 'https:' || url.username || url.password || url.href.length > 2048 || !valid)
+    throw fail(`invalid_${provider}_url`);
+  return url.href;
+}
+
 async function verifyTurnstile(token) {
   const secret = process.env.TURNSTILE_SECRET_KEY;
   if (!secret || !token) return false;
@@ -127,7 +140,7 @@ export async function adminRoutes(pool, redis, request, response, route) {
     const result = await pool.query(
       'SELECT t.id,t.title,t.file_url,s.started_at FROM music_state s LEFT JOIN music_tracks t ON t.id=s.track_id WHERE s.id=1',
     );
-    return json(response, 200, { track: result.rows[0]?.id ? result.rows[0] : null, serverTime: new Date().toISOString() });
+    return json(response, 200, { track: result.rows[0]?.file_url ? result.rows[0] : null, serverTime: new Date().toISOString() });
   }
   if (route === '/api/world' && method === 'GET') {
     const result = await pool.query(
@@ -206,14 +219,16 @@ export async function adminRoutes(pool, redis, request, response, route) {
     return json(response, 200, { players, pcs });
   }
   if (route === '/api/admin/music' && method === 'GET') {
-    const result = await pool.query('SELECT id,title,file_url,created_at FROM music_tracks ORDER BY created_at DESC');
+    const result = await pool.query('SELECT id,title,file_url,youtube_url,spotify_url,created_at FROM music_tracks ORDER BY created_at DESC');
     return json(response, 200, { tracks: result.rows });
   }
   if (route === '/api/admin/music' && method === 'POST') {
     const data = await body(request, 12_000_000);
     const title = String(data.title || '').trim().slice(0, 100);
     if (!title) throw fail('invalid_music');
-    let fileUrl;
+    const youtubeUrl = referenceUrl(data.youtubeUrl, 'youtube');
+    const spotifyUrl = referenceUrl(data.spotifyUrl, 'spotify');
+    let fileUrl = null;
     if (data.audio) {
       const match = /^data:audio\/(?:mpeg|mp3);base64,([A-Za-z0-9+/=]+)$/.exec(String(data.audio));
       if (!match) throw fail('invalid_audio');
@@ -225,18 +240,24 @@ export async function adminRoutes(pool, redis, request, response, route) {
       await mkdir(dataDir, { recursive: true });
       await writeFile(path.join(dataDir, filename), buffer, { flag: 'wx' });
       fileUrl = `/api/media/${filename}`;
-    } else fileUrl = audioUrl(data.audioUrl);
+    } else if (data.audioUrl) fileUrl = audioUrl(data.audioUrl);
+    if (!fileUrl && !youtubeUrl && !spotifyUrl) throw fail('music_source_required');
     const id = randomUUID();
     let result;
-    try { result = await pool.query('INSERT INTO music_tracks (id,title,file_url) VALUES ($1,$2,$3) RETURNING *', [id, title, fileUrl]); }
-    catch (cause) { if (fileUrl.startsWith('/api/media/')) await unlink(path.join(dataDir, path.basename(fileUrl))).catch(() => {}); throw cause; }
-    await pool.query('UPDATE music_state SET track_id=$1,started_at=now() WHERE id=1', [id]);
+    try { result = await pool.query('INSERT INTO music_tracks (id,title,file_url,youtube_url,spotify_url) VALUES ($1,$2,$3,$4,$5) RETURNING *', [id, title, fileUrl, youtubeUrl, spotifyUrl]); }
+    catch (cause) { if (fileUrl?.startsWith('/api/media/')) await unlink(path.join(dataDir, path.basename(fileUrl))).catch(() => {}); throw cause; }
     return json(response, 201, { track: result.rows[0] });
   }
   if (route === '/api/admin/music/play' && method === 'POST') {
     const data = await body(request);
     const trackId = data.trackId === null ? null : String(data.trackId || '');
     if (trackId !== null && !/^[0-9a-f-]{36}$/.test(trackId)) throw fail('invalid_track');
+    if (trackId !== null) {
+      const selected = await pool.query('SELECT file_url FROM music_tracks WHERE id=$1', [trackId]);
+      if (!selected.rowCount) throw fail('not_found', 404);
+      if (!selected.rows[0].file_url || /(^|\.)(youtube\.com|youtu\.be|spotify\.com)$/.test(new URL(selected.rows[0].file_url, 'http://localhost').hostname))
+        throw fail('music_audio_required');
+    }
     const result = await pool.query(
       'UPDATE music_state SET track_id=$1,started_at=CASE WHEN $1::uuid IS NULL THEN NULL ELSE now() END WHERE id=1 RETURNING track_id,started_at',
       [trackId],
@@ -247,7 +268,7 @@ export async function adminRoutes(pool, redis, request, response, route) {
   if (musicMatch && method === 'POST') {
     const result = await pool.query('DELETE FROM music_tracks WHERE id=$1 RETURNING file_url', [musicMatch[1]]);
     if (!result.rowCount) throw fail('not_found', 404);
-    if (result.rows[0].file_url.startsWith('/api/media/music-'))
+    if (result.rows[0].file_url?.startsWith('/api/media/music-'))
       await unlink(path.join(dataDir, path.basename(result.rows[0].file_url))).catch(() => {});
     return json(response, 200, { ok: true });
   }

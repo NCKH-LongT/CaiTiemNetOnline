@@ -11,6 +11,7 @@ import { formatDuration } from '@/lib/time';
 type State = { wallpaper_url?: string; browser_url?: string };
 type Shortcut = { id: string; title: string; url: string; player_id: string; nickname: string; likes: number; dislikes: number; my_vote: number | null };
 type BrowserEntry = { address: string; content: string | null };
+type YoutubeVideo = { id: string; title: string; channel: string; thumbnail: string };
 const browserHome: BrowserEntry = { address: '', content: null };
 function videoPortal(address: string): 'YouTube' | 'TikTok' | null {
   try {
@@ -43,6 +44,10 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
   const [top, setTop] = useState<ArtImage[]>([]);
   const [url, setUrl] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
+  const [videoQuery, setVideoQuery] = useState('');
+  const [videoResults, setVideoResults] = useState<YoutubeVideo[]>([]);
+  const [videoSearchError, setVideoSearchError] = useState('');
+  const [videoSearching, setVideoSearching] = useState(false);
   const [browser, setBrowser] = useState<{ history: BrowserEntry[]; index: number }>({ history: [browserHome], index: 0 });
   const activeBrowserUrl = browser.history[browser.index]?.content || null;
   const [reloadKey, setReloadKey] = useState(0);
@@ -295,6 +300,22 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
   );
 
   const currentPage = browser.history[browser.index] || browserHome;
+  const searchYoutube = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = videoQuery.trim();
+    if (query.length < 2) return;
+    setVideoSearching(true);
+    setVideoSearchError('');
+    try {
+      const result = await api<{ videos: YoutubeVideo[] }>(`/api/youtube/search?q=${encodeURIComponent(query)}`);
+      setVideoResults(result.videos);
+      if (!result.videos.length) setVideoSearchError('Không tìm thấy video phù hợp.');
+    } catch (error) {
+      const code = (error as Error).message;
+      setVideoSearchError(code === 'youtube_search_not_configured' ? 'Chưa cấu hình YOUTUBE_API_KEY trên máy chủ. Bạn vẫn có thể dán link video bên dưới.' : code === 'search_rate_limited' ? 'Bạn tìm quá nhanh. Hãy thử lại sau một phút.' : 'Không tìm được video lúc này. Hãy thử lại hoặc dán link video.');
+      setVideoResults([]);
+    } finally { setVideoSearching(false); }
+  };
   const currentPortal = videoPortal(currentPage.address);
   const embeddedHost = currentPage.content ? new URL(currentPage.content).hostname : null;
   const browserTitle = currentPortal || (embeddedHost === 'www.youtube-nocookie.com' ? 'YouTube' : embeddedHost?.endsWith('tiktok.com') ? 'TikTok' : embeddedHost || 'Tab mới');
@@ -420,10 +441,23 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
               <div className="browser-video-portal">
                 <span className={`browser-portal-mark ${currentPortal.toLowerCase()}`}>{currentPortal === 'YouTube' ? '▶' : '♪'}</span>
                 <h2>{currentPortal}</h2>
-                <p>Trang chủ {currentPortal} không cho hiển thị trong khung của game. Dán link video để xem ngay tại đây.</p>
+                <p>{currentPortal === 'YouTube' ? 'Tìm video theo tên và chọn kết quả để xem ngay trong tab này.' : 'Dán link video để xem ngay trong tab này.'}</p>
+                {currentPortal === 'YouTube' && <>
+                  <form onSubmit={searchYoutube} className="browser-video-search">
+                    <input aria-label="Tìm video YouTube" type="search" placeholder="Tên bài hát, ca sĩ hoặc từ khóa..." value={videoQuery} onChange={(event) => setVideoQuery(event.target.value)} minLength={2} maxLength={100} required />
+                    <button type="submit" disabled={videoSearching}>{videoSearching ? 'Đang tìm...' : 'Tìm kiếm'}</button>
+                  </form>
+                  {videoSearchError && <p role="status" className="browser-video-error">{videoSearchError}</p>}
+                  {videoResults.length > 0 && <div className="browser-video-results" aria-label="Kết quả tìm kiếm YouTube">
+                    {videoResults.map((video) => <button key={video.id} type="button" onClick={() => { void visit(`https://www.youtube.com/watch?v=${video.id}`); }}>
+                      <Image unoptimized src={video.thumbnail} alt="" width={120} height={68} />
+                      <span><strong>{video.title}</strong><small>{video.channel}</small></span>
+                    </button>)}
+                  </div>}
+                </>}
                 <form onSubmit={(event) => { event.preventDefault(); void visit(videoUrl); }}>
                   <input aria-label={`Link video ${currentPortal}`} type="url" placeholder={`Dán link video ${currentPortal} (https://...)`} value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} required />
-                  <button type="submit">Phát video</button>
+                  <button type="submit">Mở link</button>
                 </form>
               </div>
             )}

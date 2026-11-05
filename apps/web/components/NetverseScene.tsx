@@ -491,7 +491,17 @@ function RoomShell() {
 }
 
 function World(props: Props) {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
+  useEffect(() => {
+    if (!(camera instanceof THREE.PerspectiveCamera)) return;
+    const aspect = size.width / Math.max(1, size.height);
+    const portraitFov = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(55) / 2) / aspect);
+    const fov = size.width <= 1024 && aspect < 0.85
+      ? THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(portraitFov), 60, 92)
+      : 60;
+    camera.setFocalLength(camera.getFilmHeight() / (2 * Math.tan(THREE.MathUtils.degToRad(fov) / 2)));
+    camera.updateProjectionMatrix();
+  }, [camera, size.width, size.height]);
   const areaLight = useRef<THREE.PointLight>(null);
   const wallSlots = useMemo(() => props.wallImages.length
     ? Array.from({ length: Math.max(4, props.wallImages.length) }, (_, index) => ({ art: props.wallImages[index % props.wallImages.length], index }))

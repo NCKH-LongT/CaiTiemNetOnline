@@ -111,9 +111,14 @@ CREATE TABLE IF NOT EXISTS media_backups (
 CREATE TABLE IF NOT EXISTS music_tracks (
   id uuid PRIMARY KEY,
   title text NOT NULL,
-  file_url text NOT NULL,
+  file_url text,
+  youtube_url text,
+  spotify_url text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE music_tracks ALTER COLUMN file_url DROP NOT NULL;
+ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS youtube_url text;
+ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS spotify_url text;
 CREATE TABLE IF NOT EXISTS music_state (
   id integer PRIMARY KEY CHECK (id = 1),
   track_id uuid REFERENCES music_tracks(id) ON DELETE SET NULL,
