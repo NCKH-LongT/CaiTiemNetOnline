@@ -10,6 +10,16 @@ import { formatDuration } from '@/lib/time';
 
 type State = { wallpaper_url?: string; browser_url?: string };
 type Shortcut = { id: string; title: string; url: string; player_id: string; nickname: string; likes: number; dislikes: number; my_vote: number | null };
+type BrowserEntry = { address: string; content: string | null };
+const browserHome: BrowserEntry = { address: '', content: null };
+function videoPortal(address: string): 'YouTube' | 'TikTok' | null {
+  try {
+    const { hostname, pathname } = new URL(address);
+    if (['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(hostname) && pathname === '/') return 'YouTube';
+    if (['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'].includes(hostname) && pathname === '/') return 'TikTok';
+  } catch { /* The new tab has no address. */ }
+  return null;
+}
 const presetShortcuts = [
   { title: 'YouTube', url: 'https://www.youtube.com/', icon: 'https://www.youtube.com/favicon.ico' },
   { title: 'TikTok', url: 'https://www.tiktok.com/', icon: 'https://www.tiktok.com/favicon.ico' },
@@ -31,7 +41,10 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
   const [state, setState] = useState<State>({});
   const [images, setImages] = useState<ArtImage[]>([]);
   const [top, setTop] = useState<ArtImage[]>([]);
-  const [url, setUrl] = useState('https://www.wikipedia.org');
+  const [url, setUrl] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [browser, setBrowser] = useState<{ history: BrowserEntry[]; index: number }>({ history: [browserHome], index: 0 });
+  const [reloadKey, setReloadKey] = useState(0);
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [shortcutTitle, setShortcutTitle] = useState('');
   const [shortcutUrl, setShortcutUrl] = useState('');
@@ -67,14 +80,15 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
     const result = await api<{ state: State; images: ArtImage[] }>(`/api/pc/${stationId}`);
     setState(result.state);
     setImages(result.images);
-    setUrl(result.state.browser_url || 'https://www.wikipedia.org');
   };
   useEffect(() => {
     api<{ state: State; images: ArtImage[] }>(`/api/pc/${stationId}`)
       .then((result) => {
         setState(result.state);
         setImages(result.images);
-        setUrl(result.state.browser_url || 'https://www.wikipedia.org');
+        const saved = result.state.browser_url;
+        setBrowser(saved ? { history: [browserHome, { address: saved, content: saved }], index: 1 } : { history: [browserHome], index: 0 });
+        setUrl(saved || '');
       })
       .catch(() => setNotice('Không tải được dữ liệu PC.'));
   }, [stationId]);
@@ -167,25 +181,35 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
       setNotice((error as Error).message);
     }
   };
-  const navigate = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const visit = async (address: string) => {
     try {
-      const destination = embeddableUrl(url);
+      const destination = embeddableUrl(address.trim());
       await api(`/api/pc/${stationId}`, { browserUrl: destination });
       setState((current) => ({ ...current, browser_url: destination }));
-      setUrl(destination);
+      setBrowser((current) => ({ history: [...current.history.slice(0, current.index + 1), { address: address.trim(), content: destination }], index: current.index + 1 }));
+      setUrl(address.trim());
+      setVideoUrl('');
+      setReloadKey(0);
     } catch (error) {
       setNotice((error as Error).message);
     }
   };
-  const openShortcut = async (destination: string) => {
-    window.open(destination, '_blank', 'noopener,noreferrer');
-    try {
-      const embedded = embeddableUrl(destination);
-      await api(`/api/pc/${stationId}`, { browserUrl: embedded });
-      setState((current) => ({ ...current, browser_url: embedded }));
-      setUrl(destination);
-    } catch (cause) { setNotice((cause as Error).message); }
+  const navigate = (event: React.FormEvent) => {
+    event.preventDefault();
+    void visit(url);
+  };
+  const openShortcut = (destination: string) => { void visit(destination); };
+  const changePage = (index: number) => {
+    const entry = browser.history[index];
+    if (!entry) return;
+    setBrowser((current) => ({ ...current, index }));
+    setUrl(entry.address);
+    setReloadKey(0);
+  };
+  const newTab = () => {
+    setBrowser((current) => ({ history: [...current.history.slice(0, current.index + 1), browserHome], index: current.index + 1 }));
+    setUrl('');
+    setReloadKey(0);
   };
   const createShortcut = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -269,6 +293,11 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
     </div>
   );
 
+  const currentPage = browser.history[browser.index] || browserHome;
+  const currentPortal = videoPortal(currentPage.address);
+  const embeddedHost = currentPage.content ? new URL(currentPage.content).hostname : null;
+  const browserTitle = currentPortal || (embeddedHost === 'www.youtube-nocookie.com' ? 'YouTube' : embeddedHost?.endsWith('tiktok.com') ? 'TikTok' : embeddedHost || 'Tab mới');
+
   return (
     <section className="pc-panel" aria-label={`Máy tính số ${stationId}`}>
       <div className="pc-header">
@@ -344,56 +373,66 @@ export default function PcDesktop({ stationId, seconds, viewerId, onlinePlayers,
       )}
       {tab === 'browser' && (
         <div className="browser-view">
-          <div className="browser-shortcuts">
-            <h3>Truy cập nhanh</h3>
-            <div className="shortcut-grid">
-              {presetShortcuts.map((shortcut) => <button key={shortcut.title} type="button" onClick={() => openShortcut(shortcut.url)}>
-                <Image unoptimized src={shortcut.icon} alt="" width={24} height={24} />{shortcut.title}
-              </button>)}
-            </div>
-            {shortcuts.length > 0 && <><h3>Shortcut cộng đồng</h3><div className="shortcut-list">
-              {shortcuts.map((shortcut) => <div className="shortcut-item" key={shortcut.id}>
-                <button type="button" onClick={() => openShortcut(shortcut.url)} title={shortcut.url}>
-                  <Image unoptimized src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(shortcut.url).hostname)}&sz=64`} alt="" width={22} height={22} />
-                  <span>{shortcut.title}<small>#{shortcut.nickname}</small></span>
-                </button>
-                <button type="button" disabled={shortcut.player_id === viewerId} className={shortcut.my_vote === 1 ? 'selected' : ''} onClick={() => voteShortcut(shortcut.id, 1)} aria-label={`Thích ${shortcut.title}`}>♥ {shortcut.likes}</button>
-                <button type="button" disabled={shortcut.player_id === viewerId} className={shortcut.my_vote === -1 ? 'selected' : ''} onClick={() => voteShortcut(shortcut.id, -1)} aria-label={`Không thích ${shortcut.title}`}>× {shortcut.dislikes}</button>
-              </div>)}
-            </div><small>Shortcut sẽ ẩn khi có ít nhất 5 lượt không thích và số này gấp hơn hai lần lượt thích.</small></>}
-            <form onSubmit={createShortcut} className="shortcut-create">
-              <input aria-label="Tên shortcut" placeholder="Tên trang" value={shortcutTitle} maxLength={60} onChange={(event) => setShortcutTitle(event.target.value)} required />
-              <input aria-label="Địa chỉ shortcut HTTPS" placeholder="https://..." value={shortcutUrl} onChange={(event) => setShortcutUrl(event.target.value)} required />
-              <button>+ THÊM</button>
-            </form>
+          <div className="browser-tab-strip">
+            <div className="browser-tab-active"><span className="browser-tab-favicon">◉</span><span>{browserTitle}</span></div>
+            <button type="button" onClick={newTab} aria-label="Mở tab mới" title="Mở tab mới">＋</button>
+            <span className="browser-window-dots" aria-hidden="true"><i /><i /><i /></span>
           </div>
-          <form onSubmit={navigate}>
-            <input
-              aria-label="Địa chỉ HTTPS"
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-            />
-            <button>Đi</button>
+          <form className="browser-toolbar" onSubmit={navigate}>
+            <button type="button" onClick={() => changePage(browser.index - 1)} disabled={browser.index === 0} aria-label="Quay lại" title="Quay lại">←</button>
+            <button type="button" onClick={() => changePage(browser.index + 1)} disabled={browser.index >= browser.history.length - 1} aria-label="Tiến tới" title="Tiến tới">→</button>
+            <button type="button" onClick={() => setReloadKey((current) => current + 1)} aria-label="Tải lại" title="Tải lại">↻</button>
+            <button type="button" onClick={newTab} aria-label="Trang chủ" title="Trang chủ">⌂</button>
+            <label className="browser-address"><span aria-hidden="true">{url ? '🔒' : '⌕'}</span><input aria-label="Địa chỉ HTTPS" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="Nhập địa chỉ HTTPS hoặc link video" /></label>
+            <button type="submit" className="browser-go">Đi</button>
           </form>
-          <p>
-            Shortcut mở trang ở tab mới và lưu link vào PC. Video YouTube/TikTok có thể phát trong PC;
-            báo điện tử chỉ hiện nếu trang cho phép nhúng. Nếu màn hình trống, dùng nút Mở ngoài.
-          </p>
-          {state.browser_url && (
-            <a className="browser-external" href={state.browser_url} target="_blank" rel="noopener noreferrer">
-              Mở ngoài ↗
-            </a>
-          )}
-          {state.browser_url && (
-            <iframe
-              title="Trình duyệt NETVERSE"
-              src={state.browser_url}
-              sandbox="allow-forms allow-scripts allow-same-origin allow-popups"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-              allowFullScreen
-            />
-          )}
+          <div className="browser-content">
+            {!currentPage.content && (
+              <div className="browser-home">
+                <div className="browser-home-heading"><span>◉</span><div><small>NETVERSE BROWSER</small><h2>Khám phá web ngay tại PC</h2><p>Chọn một trang hoặc nhập link video vào thanh địa chỉ.</p></div></div>
+                <div className="browser-shortcuts">
+                  <h3>Truy cập nhanh</h3>
+                  <div className="shortcut-grid">
+                    {presetShortcuts.map((shortcut) => <button key={shortcut.title} type="button" onClick={() => openShortcut(shortcut.url)}>
+                      <Image unoptimized src={shortcut.icon} alt="" width={28} height={28} />{shortcut.title}
+                    </button>)}
+                  </div>
+                  {shortcuts.length > 0 && <><h3>Shortcut cộng đồng</h3><div className="shortcut-list">
+                    {shortcuts.map((shortcut) => <div className="shortcut-item" key={shortcut.id}>
+                      <button type="button" onClick={() => openShortcut(shortcut.url)} title={shortcut.url}>
+                        <Image unoptimized src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(shortcut.url).hostname)}&sz=64`} alt="" width={22} height={22} />
+                        <span>{shortcut.title}<small>#{shortcut.nickname}</small></span>
+                      </button>
+                      <button type="button" disabled={shortcut.player_id === viewerId} className={shortcut.my_vote === 1 ? 'selected' : ''} onClick={() => voteShortcut(shortcut.id, 1)} aria-label={`Thích ${shortcut.title}`}>♥ {shortcut.likes}</button>
+                      <button type="button" disabled={shortcut.player_id === viewerId} className={shortcut.my_vote === -1 ? 'selected' : ''} onClick={() => voteShortcut(shortcut.id, -1)} aria-label={`Không thích ${shortcut.title}`}>× {shortcut.dislikes}</button>
+                    </div>)}
+                  </div><small>Shortcut sẽ ẩn khi có ít nhất 5 lượt không thích và số này gấp hơn hai lần lượt thích.</small></>}
+                  <form onSubmit={createShortcut} className="shortcut-create">
+                    <input aria-label="Tên shortcut" placeholder="Tên trang" value={shortcutTitle} maxLength={60} onChange={(event) => setShortcutTitle(event.target.value)} required />
+                    <input aria-label="Địa chỉ shortcut HTTPS" placeholder="https://..." value={shortcutUrl} onChange={(event) => setShortcutUrl(event.target.value)} required />
+                    <button>+ THÊM</button>
+                  </form>
+                </div>
+              </div>
+            )}
+            {currentPortal && (
+              <div className="browser-video-portal">
+                <span className={`browser-portal-mark ${currentPortal.toLowerCase()}`}>{currentPortal === 'YouTube' ? '▶' : '♪'}</span>
+                <h2>{currentPortal}</h2>
+                <p>Trang chủ {currentPortal} không cho hiển thị trong khung của game. Dán link video để xem ngay tại đây.</p>
+                <form onSubmit={(event) => { event.preventDefault(); void visit(videoUrl); }}>
+                  <input aria-label={`Link video ${currentPortal}`} type="url" placeholder={`Dán link video ${currentPortal} (https://...)`} value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} required />
+                  <button type="submit">Phát video</button>
+                </form>
+              </div>
+            )}
+            {currentPage.content && !currentPortal && (
+              <div className="browser-frame">
+                <iframe key={`${currentPage.content}-${reloadKey}`} title={`Trang ${browserTitle} trong NETVERSE`} src={currentPage.content} sandbox="allow-forms allow-scripts allow-same-origin" referrerPolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen />
+                <small>Một số trang không cho phép hiển thị bên trong game. Video YouTube và TikTok dùng trình phát nhúng.</small>
+              </div>
+            )}
+          </div>
         </div>
       )}
       {tab === 'album' && (

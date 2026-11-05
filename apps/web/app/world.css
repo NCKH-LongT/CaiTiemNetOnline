@@ -261,6 +261,47 @@
   border-radius: 7px;
   background: #fff;
 }
+.browser-view { padding: 0; overflow: hidden; background: #171826; }
+.browser-tab-strip { display: flex; align-items: end; gap: 6px; min-height: 39px; padding: 7px 12px 0; background: #252438; border-bottom: 1px solid #ffffff1a; }
+.browser-tab-active { display: flex; align-items: center; gap: 8px; width: min(220px, 42%); min-width: 0; height: 32px; padding: 0 12px; border-radius: 9px 9px 0 0; background: #37364a; color: #f6f2ff; font-size: 12px; }
+.browser-tab-active > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-tab-favicon { color: #9debd2; font-size: 17px; }
+.browser-view .browser-tab-strip button { margin: 0 0 5px; padding: 2px 8px; border: 0; background: transparent; color: #d6d0e8; font-size: 19px; }
+.browser-window-dots { display: flex; gap: 6px; margin: 0 4px 15px auto; }
+.browser-window-dots i { width: 7px; height: 7px; border-radius: 50%; background: #a49bb9; }
+.browser-window-dots i:first-child { background: #f2a1a1; }
+.browser-window-dots i:nth-child(2) { background: #e8cb86; }
+.browser-view .browser-toolbar { display: flex; align-items: center; gap: 5px; padding: 8px 10px; background: #37364a; border-bottom: 1px solid #ffffff1c; }
+.browser-view .browser-toolbar button { flex: none; margin: 0; padding: 5px 8px; border: 0; background: transparent; color: #e4def0; font-size: 19px; line-height: 1; }
+.browser-view .browser-toolbar button:disabled { opacity: .35; cursor: default; }
+.browser-view .browser-toolbar .browser-go { padding: 8px 12px; border-radius: 6px; background: #9debd2; color: #172322; font-size: 11px; }
+.browser-address { display: flex; align-items: center; flex: 1; min-width: 0; gap: 7px; padding: 0 10px; border: 1px solid #a9a4c04d; border-radius: 7px; background: #1d1d2c; color: #b6e7d8; font-size: 13px; }
+.browser-view .browser-address input { min-width: 0; width: 100%; padding: 8px 0; border: 0; outline: 0; background: transparent; color: #f7f5fb; font-size: 12px; }
+.browser-address:focus-within { border-color: #9debd2; }
+.browser-content { display: flex; flex: 1; min-height: 0; overflow: auto; background: radial-gradient(circle at 50% 0%, #302946, #1a1b2d 65%); }
+.browser-home { width: min(760px, 100%); margin: auto; padding: 26px; }
+.browser-home-heading { display: flex; align-items: center; justify-content: center; gap: 17px; margin-bottom: 24px; text-align: left; }
+.browser-home-heading > span { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 18px; background: #9debd2; color: #1a2430; font-size: 36px; }
+.browser-home-heading small { color: #9debd2; font-size: 10px; letter-spacing: .2em; }
+.browser-home-heading h2 { margin: 3px 0; font-size: 21px; }
+.browser-home-heading p { margin: 0; }
+.browser-home .browser-shortcuts { max-height: none; overflow: visible; margin: 0; padding: 0; border: 0; }
+.browser-home .browser-shortcuts h3 { margin: 14px 0 9px; color: #e7e0f2; font-size: 12px; }
+.browser-home .shortcut-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.browser-home .shortcut-grid button { justify-content: flex-start; gap: 10px; min-height: 52px; padding: 10px; background: #ffffff14; }
+.browser-home .shortcut-grid button:hover, .browser-home .shortcut-item button:hover { border-color: #9debd2; background: #ffffff20; }
+.browser-home .shortcut-create { margin-top: 12px; }
+.browser-video-portal { align-self: center; width: min(540px, 100%); margin: auto; padding: 28px; text-align: center; }
+.browser-portal-mark { display: grid; place-items: center; width: 74px; height: 74px; margin: 0 auto 14px; border-radius: 21px; background: #ed3d3d; color: #fff; font-size: 38px; }
+.browser-portal-mark.tiktok { background: #111; text-shadow: -2px -2px #25f4ee, 2px 2px #fe2c55; }
+.browser-video-portal h2 { margin: 0; font-size: 24px; }
+.browser-video-portal p { margin: 10px auto 20px; max-width: 430px; }
+.browser-video-portal form { display: flex; gap: 7px; }
+.browser-video-portal input { min-width: 0; }
+.browser-video-portal button { white-space: nowrap; }
+.browser-frame { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; padding: 8px; }
+.browser-frame iframe { min-height: 200px; border-radius: 4px; }
+.browser-frame small { padding-top: 5px; color: #b8b0c9; font-size: 10px; }
 .album-view {
   flex: 1;
   overflow: auto;
