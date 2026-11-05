@@ -302,6 +302,7 @@
 .browser-frame { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; padding: 8px; }
 .browser-frame iframe { min-height: 200px; border-radius: 4px; }
 .browser-frame small { padding-top: 5px; color: #b8b0c9; font-size: 10px; }
+.nav-icon, .mobile-menu-toggle, .mobile-player-menu, .mobile-movement, .touch-help { display: none; }
 .album-view {
   flex: 1;
   overflow: auto;
@@ -940,4 +941,46 @@
   .browser-view iframe {
     min-height: 200px;
   }
+}
+@media (max-width: 1024px) {
+  .app-shell { min-height: 0; }
+  .topbar { height: 56px; padding: 0 14px; }
+  .brand-mark { width: 34px; height: 34px; font-size: 24px; }
+  .mobile-menu-toggle { display: grid; place-items: center; width: 42px; height: 42px; margin-left: auto; border: 1px solid #a28be177; border-radius: 10px; background: #2d2948; color: #f5f0ff; font-size: 22px; }
+  .mobile-player-menu { position: absolute; z-index: 9; top: 60px; right: 12px; display: block; width: min(260px, calc(100vw - 24px)); padding: 12px; border: 1px solid #a28be177; border-radius: 12px; background: #211e35f5; box-shadow: 0 14px 36px #0a071ccc; }
+  .mobile-player-menu div { padding: 4px 5px 10px; border-bottom: 1px solid #ffffff22; }
+  .mobile-player-menu strong, .mobile-player-menu small { display: block; }
+  .mobile-player-menu small { margin-top: 3px; color: #bdb2d4; font-size: 11px; }
+  .mobile-player-menu button { display: block; width: 100%; margin-top: 5px; padding: 11px; border: 0; border-radius: 7px; background: transparent; color: #f5f0ff; text-align: left; font-size: 12px; }
+  .mobile-player-menu button:hover { background: #ffffff1b; }
+  .main-tabs { z-index: 8; top: auto; bottom: 0; left: 0; right: 0; transform: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; width: 100%; max-width: none; min-height: calc(68px + env(safe-area-inset-bottom)); padding: 7px 10px calc(7px + env(safe-area-inset-bottom)); overflow: visible; border: 0; border-top: 1px solid #b6a0e440; border-radius: 0; background: #171628f5; }
+  .main-tabs button { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; min-height: 52px; padding: 5px 2px; font-size: 9px; letter-spacing: .02em; }
+  .main-tabs button .nav-icon { display: block; font-size: 20px; line-height: 1; }
+  .main-tabs .unread-badge { position: absolute; top: 2px; right: max(8px, 20%); }
+  .main-tabs .nav-online-count { display: none; }
+  .footer { display: none; }
+  .pc-panel, .social-panel, .ranking-panel { top: 64px; bottom: calc(76px + env(safe-area-inset-bottom)); width: calc(100vw - 20px); min-height: 0; }
+  .community-music { top: 64px; right: 10px; }
+  .toast { top: 64px; right: 10px; max-width: calc(100vw - 20px); }
+  .mobile-movement { position: absolute; z-index: 4; left: 0; right: 0; bottom: calc(84px + env(safe-area-inset-bottom)); display: block; height: 128px; pointer-events: none; }
+  .mobile-movement button { position: absolute; bottom: 0; display: grid; place-items: center; border: 1px solid #c3b4e477; color: #f7f3ff; background: #211f39c9; box-shadow: 0 8px 28px #0807148f; backdrop-filter: blur(8px); pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .mobile-joystick { left: 16px; width: 126px; height: 126px; border-radius: 50%; }
+  .mobile-joystick-ring { width: 82px; height: 82px; border: 1px dashed #c8baf08c; border-radius: 50%; }
+  .mobile-joystick-thumb { position: absolute; width: 58px; height: 58px; border: 2px solid #d4fff2; border-radius: 50%; background: #8adcc5c9; box-shadow: 0 4px 15px #142c31aa; }
+  .mobile-run { right: 18px; width: 72px; height: 72px; border-radius: 50%; font-size: 11px; font-weight: 800; letter-spacing: .05em; }
+  .mobile-run:active { background: #7059b9; }
+  .interaction { left: auto; right: 18px; bottom: calc(168px + env(safe-area-inset-bottom)); transform: none; max-width: min(190px, 48vw); padding: 10px; }
+  .interaction kbd { display: none; }
+  .interaction span { font-size: 11px; }
+  .begging-actions { right: 12px; bottom: calc(170px + env(safe-area-inset-bottom)); }
+  .netverse-canvas { touch-action: none; }
+  .touch-help { display: block; }
+  .keyboard-help { display: none !important; }
+  .intro-backdrop { overflow-y: auto; align-items: start; padding: 18px 0; }
+  .intro-card { margin: auto; }
+}
+@media (max-width: 550px) {
+  .topbar-right { display: none; }
+  .main-tabs button { font-size: 9px; }
+  .social-panel, .ranking-panel { padding: 12px; }
 }

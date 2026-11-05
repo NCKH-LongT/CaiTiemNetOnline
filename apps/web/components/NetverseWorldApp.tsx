@@ -24,6 +24,96 @@ type Leaderboard = {
 };
 const formatMinutes = formatDuration;
 
+function MobileMovementControls({ heldKeys }: { heldKeys: React.RefObject<Set<string>> }) {
+  const joystickPointer = useRef<number | null>(null);
+  const runPointer = useRef<number | null>(null);
+  const [thumb, setThumb] = useState({ x: 0, y: 0 });
+  const clearDirection = () => {
+    for (const key of ['w', 'a', 's', 'd']) heldKeys.current.delete(key);
+    setThumb({ x: 0, y: 0 });
+  };
+  const moveJoystick = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerId !== joystickPointer.current) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const radius = bounds.width * 0.34;
+    const dx = (event.clientX - bounds.left - bounds.width / 2) / radius;
+    const dy = (event.clientY - bounds.top - bounds.height / 2) / radius;
+    const scale = Math.max(1, Math.hypot(dx, dy));
+    const x = dx / scale;
+    const y = dy / scale;
+    for (const key of ['w', 'a', 's', 'd']) heldKeys.current.delete(key);
+    if (y < -0.28) heldKeys.current.add('w');
+    if (y > 0.28) heldKeys.current.add('s');
+    if (x < -0.28) heldKeys.current.add('a');
+    if (x > 0.28) heldKeys.current.add('d');
+    setThumb({ x, y });
+  };
+  const releaseJoystick = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerId !== joystickPointer.current) return;
+    joystickPointer.current = null;
+    clearDirection();
+  };
+  const releaseRun = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerId !== runPointer.current) return;
+    runPointer.current = null;
+    heldKeys.current.delete('shift');
+  };
+  useEffect(() => {
+    const keys = heldKeys.current;
+    const stop = () => {
+      for (const key of ['w', 'a', 's', 'd', 'shift']) keys.delete(key);
+      joystickPointer.current = null;
+      runPointer.current = null;
+      setThumb({ x: 0, y: 0 });
+    };
+    window.addEventListener('blur', stop);
+    return () => {
+      window.removeEventListener('blur', stop);
+      for (const key of ['w', 'a', 's', 'd', 'shift']) keys.delete(key);
+    };
+  }, [heldKeys]);
+  return (
+    <div className="mobile-movement" aria-label="Điều khiển di chuyển">
+      <button
+        type="button"
+        className="mobile-joystick"
+        aria-label="Kéo cần điều khiển để di chuyển nhân vật"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          if (joystickPointer.current !== null) return;
+          joystickPointer.current = event.pointerId;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          moveJoystick(event);
+        }}
+        onPointerMove={moveJoystick}
+        onPointerUp={releaseJoystick}
+        onPointerCancel={releaseJoystick}
+        onLostPointerCapture={releaseJoystick}
+      >
+        <span className="mobile-joystick-ring" />
+        <span className="mobile-joystick-thumb" style={{ transform: `translate(${thumb.x * 35}px, ${thumb.y * 35}px)` }} />
+      </button>
+      <button
+        type="button"
+        className="mobile-run"
+        aria-label="Giữ để chạy"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          if (runPointer.current !== null) return;
+          runPointer.current = event.pointerId;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          heldKeys.current.add('shift');
+        }}
+        onPointerUp={releaseRun}
+        onPointerCancel={releaseRun}
+        onLostPointerCapture={releaseRun}
+      >
+        CHẠY
+      </button>
+    </div>
+  );
+}
+
 export default function NetverseWorldApp() {
   const [player, setPlayer] = useState<Player | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -43,6 +133,7 @@ export default function NetverseWorldApp() {
   const [onlineSeconds, setOnlineSeconds] = useState(0);
   const [notice, setNotice] = useState('');
   const [mainTab, setMainTab] = useState<'world' | 'community' | 'rankings'>('world');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [chatTarget, setChatTarget] = useState<{
     sessionId: string | null;
     userId: string;
@@ -371,6 +462,16 @@ export default function NetverseWorldApp() {
     setPlayers([]);
     setConnection('offline');
     setMainTab('world');
+    setMobileMenuOpen(false);
+  };
+  const openProfile = () => {
+    if (!player) return;
+    setProfileName(player.fullname);
+    setProfileNick(player.nickname);
+    setProfileImage(null);
+    setProfileCharacter(player.character_id || characters[0].id);
+    setMobileMenuOpen(false);
+    setProfileOpen(true);
   };
   const saveProfile = async () => {
     try {
@@ -531,28 +632,37 @@ export default function NetverseWorldApp() {
                 : 'NGOẠI TUYẾN'}
           </span>
         </div>
+        {entered && player && <button type="button" className="mobile-menu-toggle" onClick={() => setMobileMenuOpen((current) => !current)} aria-expanded={mobileMenuOpen} aria-controls="mobile-player-menu" aria-label="Mở menu người chơi">☰</button>}
       </header>
       {entered && player ? (
         <>
           <CommunityMusic />
+          {mobileMenuOpen && (
+            <aside className="mobile-player-menu" id="mobile-player-menu" aria-label="Menu người chơi">
+              <div><strong>{player.nickname}</strong><small>Còn {formatMinutes(seconds)} · {connection === 'online' ? 'Trực tuyến' : 'Đang kết nối'}</small></div>
+              <button type="button" onClick={() => { setMobileMenuOpen(false); void save(); }}>Lưu game</button>
+              <button type="button" onClick={openProfile}>Nhân vật / Profile</button>
+              <button type="button" onClick={() => { void logout(); }}>Đăng xuất</button>
+            </aside>
+          )}
           <nav className="main-tabs" aria-label="Màn hình chính">
             <button
               className={mainTab === 'world' ? 'selected' : ''}
-              onClick={() => setMainTab('world')}
+              onClick={() => { setMainTab('world'); setMobileMenuOpen(false); }}
             >
-              THẾ GIỚI
+              <span className="nav-icon" aria-hidden="true">◈</span><span>THẾ GIỚI</span>
             </button>
             <button
               className={mainTab === 'community' ? 'selected' : ''}
-              onClick={() => setMainTab('community')}
+              onClick={() => { setMainTab('community'); setMobileMenuOpen(false); }}
             >
-              CỘNG ĐỒNG ({players.length}) {unreadTotal > 0 && <span className="unread-badge">{unreadTotal}</span>}
+              <span className="nav-icon" aria-hidden="true">♧</span><span>CỘNG ĐỒNG <span className="nav-online-count">({players.length})</span></span> {unreadTotal > 0 && <span className="unread-badge">{unreadTotal}</span>}
             </button>
             <button
               className={mainTab === 'rankings' ? 'selected' : ''}
-              onClick={() => setMainTab('rankings')}
+              onClick={() => { setMainTab('rankings'); setMobileMenuOpen(false); }}
             >
-              BẢNG VÀNG
+              <span className="nav-icon" aria-hidden="true">★</span><span>BẢNG VÀNG</span>
             </button>
           </nav>
           <aside className="hud-left">
@@ -590,13 +700,7 @@ export default function NetverseWorldApp() {
             </button>
             <button
               className="hud-action"
-              onClick={() => {
-                setProfileName(player.fullname);
-                setProfileNick(player.nickname);
-                setProfileImage(null);
-                setProfileCharacter(player.character_id || characters[0].id);
-                setProfileOpen(true);
-              }}
+              onClick={openProfile}
             >
               ĐỔI NHÂN VẬT / PROFILE
             </button>
@@ -604,6 +708,7 @@ export default function NetverseWorldApp() {
               ĐĂNG XUẤT
             </button>
           </aside>
+          {mainTab === 'world' && !seatedAt && <MobileMovementControls heldKeys={keys} />}
           {nearbyId && !seatedAt && seconds > 0 && mainTab === 'world' && (
             <button className="interaction" onClick={() => sit(nearbyId)}>
               <kbd>E</kbd>
@@ -904,7 +1009,8 @@ export default function NetverseWorldApp() {
                 </form>
               </>
             )}
-            <small>W tiến · S lùi · A trái · D phải · E tương tác · Shift chạy</small>
+            <small className="keyboard-help">W tiến · S lùi · A trái · D phải · E tương tác · Shift chạy</small>
+            <small className="touch-help">Trên điện thoại: kéo cần điều khiển để đi, giữ CHẠY để chạy và chạm nút ngồi máy khi đến gần ghế.</small>
           </section>
         </div>
       )}
