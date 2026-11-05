@@ -619,6 +619,7 @@ export default function NetverseWorldApp() {
             <small>INTERNET CAFÉ / 3D WORLD</small>
           </span>
         </div>
+        {entered && player && <CommunityMusic />}
         <div className="topbar-right">
           <span className="room-tag">
             {stations.length} MÁY <i /> {players.length} ONLINE
@@ -636,7 +637,6 @@ export default function NetverseWorldApp() {
       </header>
       {entered && player ? (
         <>
-          <CommunityMusic />
           {mobileMenuOpen && (
             <aside className="mobile-player-menu" id="mobile-player-menu" aria-label="Menu người chơi">
               <div><strong>{player.nickname}</strong><small>Còn {formatMinutes(seconds)} · {connection === 'online' ? 'Trực tuyến' : 'Đang kết nối'}</small></div>

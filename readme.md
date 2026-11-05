@@ -34,7 +34,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 - Biểu tượng YouTube và TikTok mở trang xem video ngay trong trình duyệt PC; dán URL video để phát bằng player nhúng. Shortcut khác được tải trong khung PC nếu trang đích cho phép iframe.
 - Tab Cộng đồng hiển thị người online, các cuộc trò chuyện riêng theo tin nhắn mới nhất, số tin chưa đọc, avatar, thời gian nhắn và tim. Ảnh chat được nén trước khi gửi. Chat không lưu trên server; nội dung nhận được lưu trong IndexedDB của máy người chơi. Người offline không nhận tin nhắn.
 - Admin tải GLB/GLTF, nhập giấy phép, xem trước/cân kích thước, kéo vật thể trên sơ đồ và xuất bản. Gemini có thể tạo phương án bố trí để admin duyệt. Admin cũng chỉnh ngưỡng cấp nghệ sĩ và màu/ảnh nền bảng vàng.
-- Admin thêm link YouTube trong mục **Nhạc cộng đồng** rồi chọn phát/dừng. Người chơi nghe cùng bài và có nút bật/tắt riêng; nếu trình duyệt chặn tự phát, bấm phát trên trình phát video. Admin có danh sách người chơi, trạng thái 200 PC và bản xem trước desktop đang hoạt động.
+- Admin thêm link YouTube hoặc tải MP3 trong mục **Nhạc cộng đồng** rồi chọn phát/dừng. Người chơi dùng checkbox nhạc và thanh âm lượng trên header; với bài YouTube, trình phát video hiện khi bật nhạc để có thể chạm phát nếu trình duyệt chặn tự động. Admin có danh sách người chơi, trạng thái 200 PC và bản xem trước desktop đang hoạt động.
 
 Xem thêm [kiến trúc và giới hạn](docs/ARCHITECTURE.md), [giấy phép asset](docs/ASSET_LICENSES.md), [cách thêm GLB](docs/ASSET_INTEGRATION.md), và [guide gốc](NETVERSE_3D_ASSET_GUIDE.md).
 
